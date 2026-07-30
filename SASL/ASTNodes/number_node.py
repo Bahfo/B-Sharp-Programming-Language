@@ -14,3 +14,12 @@ class BinaryOpNode:
 
     def __repr__(self):
         return f"({self.left_node}__{self.op_token}__{self.right_node})"
+
+
+class BinaryNegationNode:
+    def __init__(self, op_token, node):
+        self.op_token = op_token
+        self.node = node
+
+    def __repr__(self):
+        return f"{self.op_token} : {self.node}"

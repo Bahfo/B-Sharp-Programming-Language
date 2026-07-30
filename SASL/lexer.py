@@ -1,22 +1,23 @@
 from SASL.errors import IllegalCharacaterError
 from SASL.ASTNodes.parser import Parser
 from SASL.position import Position
+from SASL.tokens import *
 
-TOKEN_INT = "INT"
-TOKEN_FLOAT = "FLOAT"
-TOKEN_PLUS = "PLUS"
-TOKEN_MINUS = "MINUS"
-TOKEN_MUL = "MUL"
-TOKEN_DIV = "DIV"
-TOKEN_LPAREN = "LPAREN"
-TOKEN_RPAREN = "RPAREN"
 DIGITS = "0123456789"
 
 
 class Token:
-    def __init__(self, type, value=None):
+    def __init__(self, type, value=None, pos_start=None, pos_end=None):
         self.type = type
         self.value = value
+
+        if pos_start:
+            self.pos_start = pos_start.copy()
+            self.pos_end = pos_start.copy()
+            self.pos_end.forward()
+
+        if pos_end:
+            self.pos_end = pos_end.copy()
 
     def __repr__(self):
         if self.value:
@@ -42,6 +43,7 @@ class Lexer:
     def numberize(self):
         number_str = ""
         dot_count = 0
+        pos_start = self.pos.copy()
 
         while self.current_char != None and self.current_char in DIGITS + ".":
             if self.current_char == ".":
@@ -54,9 +56,9 @@ class Lexer:
             self.forward()
 
         if dot_count == 0:
-            return Token(TOKEN_INT, int(number_str))
+            return Token(TOKEN_INT, int(number_str), pos_start, self.pos)
         else:
-            return Token(TOKEN_FLOAT, float(number_str))
+            return Token(TOKEN_FLOAT, float(number_str), pos_start, self.pos)
 
     def tokenize(self):
         tokens = []
@@ -65,22 +67,22 @@ class Lexer:
             if self.current_char in " \t":
                 self.forward()
             elif self.current_char == "+":
-                tokens.append(Token(TOKEN_PLUS))
+                tokens.append(Token(TOKEN_PLUS, pos_start=self.pos))
                 self.forward()
             elif self.current_char == "-":
-                tokens.append(Token(TOKEN_MINUS))
+                tokens.append(Token(TOKEN_MINUS, pos_start=self.pos))
                 self.forward()
             elif self.current_char == "*":
-                tokens.append(Token(TOKEN_MUL))
+                tokens.append(Token(TOKEN_MUL, pos_start=self.pos))
                 self.forward()
             elif self.current_char == "/":
-                tokens.append(Token(TOKEN_DIV))
+                tokens.append(Token(TOKEN_DIV, pos_start=self.pos))
                 self.forward()
             elif self.current_char == "(":
-                tokens.append(Token(TOKEN_LPAREN))
+                tokens.append(Token(TOKEN_LPAREN, pos_start=self.pos))
                 self.forward()
             elif self.current_char == ")":
-                tokens.append(Token(TOKEN_RPAREN))
+                tokens.append(Token(TOKEN_RPAREN, pos_start=self.pos))
                 self.forward()
             elif self.current_char in DIGITS:
                 tokens.append(self.numberize())
@@ -90,6 +92,7 @@ class Lexer:
                 self.forward()
                 return [], IllegalCharacaterError(pos_start, self.pos, "'" + char + "'")
 
+        tokens.append(Token(TOKEN_EOF, pos_start=self.pos))
         return tokens, None
 
 
@@ -103,4 +106,4 @@ def run(file_name, text):
     parser = Parser(tokens)
     ast = parser.parser()
 
-    return ast, None
+    return ast.node, ast.error
