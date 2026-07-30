@@ -1,0 +1,46 @@
+from SASL.errors import RunTimeError
+
+
+class Number:
+    def __init__(self, value):
+        self.value = value
+        self.set_pos()
+        self.set_context()
+
+    def set_context(self, context=None):
+        self.context = context
+        return self
+
+    def set_pos(self, pos_start=None, pos_end=None):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        return self
+
+    def addition(self, other):
+        if isinstance(other, Number):
+            return Number(self.value + other.value), None
+
+    def subtraction(self, other):
+        if isinstance(other, Number):
+            return Number(self.value - other.value), None
+
+    def multiplication(self, other):
+        if isinstance(other, Number):
+            return Number(self.value * other.value), None
+
+    def division(self, other):
+        if isinstance(other, Number):
+            if other.value == 0:
+                return None, RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    "Unallowed division by zero.",
+                )
+            return Number(self.value / other.value), None
+
+    def power(self, power_factor):
+        if isinstance(power_factor, Number):
+            return Number(self.value**power_factor.value), None
+
+    def __repr__(self):
+        return str(self.value)

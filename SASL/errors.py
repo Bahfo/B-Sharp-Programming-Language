@@ -19,3 +19,8 @@ class IllegalCharacaterError(Error):
 class SASLSyntaxError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Syntax Error\n", details)
+
+
+class RunTimeError(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, "RunTime Error\n", details)

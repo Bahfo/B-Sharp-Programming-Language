@@ -84,6 +84,9 @@ class Lexer:
             elif self.current_char == ")":
                 tokens.append(Token(TOKEN_RPAREN, pos_start=self.pos))
                 self.forward()
+            elif self.current_char == "^":
+                tokens.append(Token(TOKEN_POWER, pos_start=self.pos))
+                self.forward()
             elif self.current_char in DIGITS:
                 tokens.append(self.numberize())
             else:
