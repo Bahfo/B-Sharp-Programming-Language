@@ -1,0 +1,17 @@
+# The SASL Programming Language - Simple Implementation Files
+# The codes provided here are FREE to copy without a warranty
+# or a copyright. You can freely use any of the codes inside 
+# this exact file. The rule of copyleft here does not apply to
+# any code, script, source, or text of any kind outside this 
+# file and applies only here.
+
+# Written Orignally by Bahaa Nofal - 30/7/2026.
+# Simple Hello World Examples of SASL Programming Language.
+
+MODULE HELLO_WORLD
+
+# In SASL Programming Language, the 'print' function is a builtin
+# function but it does take one enforced value (text to print) and
+# four optional values: 
+# print(val : type => list, print_color_on_screen, args[])
+print ("Hello, World!")
