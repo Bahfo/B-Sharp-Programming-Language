@@ -1,4 +1,4 @@
-import lexer
+import SASL.lexer as lexer
 
 while True:
     text = input("SASL >>> ")

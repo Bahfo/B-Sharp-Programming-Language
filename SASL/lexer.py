@@ -1,5 +1,6 @@
-from errors import IllegalCharacaterError
-from position import Position
+from SASL.errors import IllegalCharacaterError
+from SASL.ASTNodes.parser import Parser
+from SASL.position import Position
 
 TOKEN_INT = "INT"
 TOKEN_FLOAT = "FLOAT"
@@ -96,4 +97,10 @@ def run(file_name, text):
     lexer = Lexer(file_name, text)
     tokens, error = lexer.tokenize()
 
-    return tokens, error
+    if error:
+        return None, error
+
+    parser = Parser(tokens)
+    ast = parser.parser()
+
+    return ast, None
