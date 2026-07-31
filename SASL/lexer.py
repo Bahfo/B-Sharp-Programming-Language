@@ -3,7 +3,11 @@ from SASL.ASTNodes.parser import Parser
 from SASL.position import Position
 from SASL.tokens import *
 
+import string
+
 DIGITS = "0123456789"
+LETTERS = string.ascii_letters
+LETTERS_DIGITS = LETTERS + DIGITS + "_"
 
 
 class Token:
@@ -60,11 +64,26 @@ class Lexer:
         else:
             return Token(TOKEN_FLOAT, float(number_str), pos_start, self.pos)
 
+    def identifiers(self):
+        pos_start = self.pos.copy()
+        identifier = ""  # An empty string to hold the identifier
+
+        while self.current_char is not None and self.current_char in LETTERS_DIGITS:
+            identifier += self.current_char
+            self.forward()
+
+        token_type = TOKEN_KEYWORD if identifier in KEYWORDS else TOKEN_IDENTIFIER
+
+        # Returning the new token
+        return Token(token_type, identifier, pos_start, self.pos)
+
     def tokenize(self):
         tokens = []
 
         while self.current_char != None:
             if self.current_char in " \t":
+                self.forward()
+            elif self.current_char in LETTERS:
                 self.forward()
             elif self.current_char == "+":
                 tokens.append(Token(TOKEN_PLUS, pos_start=self.pos))
@@ -86,6 +105,9 @@ class Lexer:
                 self.forward()
             elif self.current_char == "^":
                 tokens.append(Token(TOKEN_POWER, pos_start=self.pos))
+                self.forward()
+            elif self.current_char == "=":
+                tokens.append(Token(TOKEN_EQUAL, pos_start=self.pos))
                 self.forward()
             elif self.current_char in DIGITS:
                 tokens.append(self.numberize())
