@@ -24,3 +24,13 @@ class SASLSyntaxError(Error):
 class RunTimeError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "RunTime Error\n", details)
+
+
+class AssignmentError(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, "Uncaught Assignment Error.\n", details)
+
+
+class ModificationError(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, "Uncaught Modification Error.\n", details)

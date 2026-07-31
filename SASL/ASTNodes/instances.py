@@ -1,4 +1,4 @@
-from SASL.errors import RunTimeError
+from SASL.errors import *
 
 
 class Number:
@@ -103,3 +103,51 @@ class NaN:
 
 class Reference:
     pass
+
+
+class EnvironmentVariable:
+    def __init__(self):
+        self.set_pos()
+        self.variables = {}
+
+    def set_pos(self, pos_start=None, pos_end=None):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        return self
+
+    def define(self, name, value, is_const=False):
+        if name in self.variables:
+            return AssignmentError(
+                self.pos_start,
+                self.pos_end,
+                f"Attempting to redefine {name} which was already defined.",
+            )
+
+        self.variables[name] = {"value": value, "is_const": is_const}
+
+    def assign(self, name, value):
+        if name not in self.variables:
+            return AssignmentError(
+                self.pos_start,
+                self.pos_end,
+                f"Attempting to access an unassigned variable {name}",
+            )
+
+        elif self.variables[name]["is_const"]:
+            return ModificationError(
+                self.pos_start,
+                self.pos_end,
+                f"Cannot change value of {name} of type const.",
+            )
+
+        self.variables[name]["value"] = value
+
+    def get(self, name):
+        if name in self.variables:
+            return AssignmentError(
+                self.pos_start,
+                self.pos_end,
+                f"{name} is not defined.",
+            )
+
+        return self.variables[name]["value"]

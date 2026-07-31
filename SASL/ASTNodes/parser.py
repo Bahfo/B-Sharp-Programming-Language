@@ -1,7 +1,7 @@
 from SASL.tokens import *
 from SASL.errors import *
 from SASL.ASTNodes.instances import *
-from SASL.ASTNodes.number_node import *
+from SASL.ASTNodes.nodes import *
 
 
 class ParserResults:
@@ -165,7 +165,9 @@ class Interpreter:
 
     def visit_NumberNode(self, node, context):
         return RunTimeResult().success(
-            Number(node.token.value).set_context(context).set_pos(node.pos_start, node.pos_end)
+            Number(node.token.value)
+            .set_context(context)
+            .set_pos(node.pos_start, node.pos_end)
         )
 
     def visit_BinaryOpNode(self, node, context):
