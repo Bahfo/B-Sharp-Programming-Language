@@ -34,3 +34,8 @@ class AssignmentError(Error):
 class ModificationError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Uncaught Modification Error.\n", details)
+
+
+class EmptynessUnmatchedError(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, "Assigning to Empty Error.\n", details)

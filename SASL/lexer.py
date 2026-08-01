@@ -84,7 +84,7 @@ class Lexer:
             if self.current_char in " \t":
                 self.forward()
             elif self.current_char in LETTERS:
-                self.forward()
+                tokens.append(self.identifiers())
             elif self.current_char == "+":
                 tokens.append(Token(TOKEN_PLUS, pos_start=self.pos))
                 self.forward()
@@ -108,6 +108,12 @@ class Lexer:
                 self.forward()
             elif self.current_char == "=":
                 tokens.append(Token(TOKEN_EQUAL, pos_start=self.pos))
+                self.forward()
+            elif self.current_char == ":":
+                tokens.append(Token(TOKEN_COLON, pos_start=self.pos))
+                self.forward()
+            elif self.current_char == ",":
+                tokens.append(Token(TOKEN_COMMA, pos_start=self.pos))
                 self.forward()
             elif self.current_char in DIGITS:
                 tokens.append(self.numberize())

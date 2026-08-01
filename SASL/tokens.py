@@ -20,23 +20,18 @@ TOKEN_POWER = "POWER"
 TOKEN_KEYWORD = "KEYWORD"
 # Variables
 TOKEN_IDENTIFIER = "IDENTIFIER"
+# Identifiers
 TOKEN_EQUAL = "EQ"
-
+TOKEN_COLON = "COLON"
+TOKEN_COMMA = "COMMA"
 
 # All Keywords
 KEYWORDS = [
     "var",
+    "none",
     "const",
-    "if",
-    "else",
-    "elif",
-    "while",
-    "do",
-    "for",
-    "in",
-    "function",
-    "object",
-    "end",
-    "continue",
-    "return",
+    "Empty",
+    "Number",
+    "String",
+    "Boolean",
 ]
