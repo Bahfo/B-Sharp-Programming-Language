@@ -16,7 +16,7 @@ class IllegalCharacaterError(Error):
         super().__init__(pos_start, pos_end, "Illegal Character\n", details)
 
 
-class SASLSyntaxError(Error):
+class B_SharpSyntaxError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Syntax Error\n", details)
 

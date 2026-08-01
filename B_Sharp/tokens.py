@@ -1,9 +1,9 @@
 # (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved.
-# The source code of SASL Programming Language.
+# The source code of B_Sharp Programming Language.
 # (Simple Abstracted Syntax Language)
 # The code is guarded and licensed under the GPLv3 License.
 # --------------------------------------------------------------
-# Module: tokens.py: All SASL defined tokens.
+# Module: tokens.py: All B_Sharp defined tokens.
 
 # Code Tokens
 TOKEN_INT = "INT"

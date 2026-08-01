@@ -1,7 +1,7 @@
-from SASL.errors import IllegalCharacaterError
-from SASL.ASTNodes.parser import Parser
-from SASL.position import Position
-from SASL.tokens import *
+from B_Sharp.errors import IllegalCharacaterError
+from B_Sharp.ASTNodes.parser import Parser
+from B_Sharp.position import Position
+from B_Sharp.tokens import *
 
 import string
 

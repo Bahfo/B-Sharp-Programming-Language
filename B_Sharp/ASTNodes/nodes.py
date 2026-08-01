@@ -48,14 +48,14 @@ class VariableAssignNode:
     def __repr__(self):
         kind = "const" if self.is_const else "var"
         type_str = f" : {self.data_type.value}" if self.data_type else ""
-        return f"{kind} {self.name.value}{type_str} = {self.value_node}"
+        return f"{kind} {self.name.value}{type_str} = {self.value}"
 
 
 class MultiVariableAssignNode:
     def __init__(self, names: list, value=None, is_const=False, type_define=False):
         self.names = names
         self.value = value
-        self.is_const = "const" if is_const == True else "var"
+        self.is_const = is_const
         self.data_type = type_define
 
         self.pos_start = names[0].pos_start

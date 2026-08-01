@@ -1,9 +1,9 @@
-# SASL/ASTNodes/parser.py
+# B_Sharp/ASTNodes/parser.py
 
-from SASL.tokens import *
-from SASL.errors import *
-from SASL.ASTNodes.instances import *
-from SASL.ASTNodes.nodes import *
+from B_Sharp.tokens import *
+from B_Sharp.errors import *
+from B_Sharp.ASTNodes.instances import *
+from B_Sharp.ASTNodes.nodes import *
 
 
 class ParserResults:
@@ -83,7 +83,7 @@ class Parser:
                 return res.success(expression)
             else:
                 return res.failure(
-                    SASLSyntaxError(
+                    B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
                         "Expected ')' at end of expression.",
@@ -91,7 +91,7 @@ class Parser:
                 )
 
         return res.failure(
-            SASLSyntaxError(
+            B_SharpSyntaxError(
                 token.pos_start, token.pos_end, "Expected number, variable, or '('"
             )
         )
@@ -154,7 +154,7 @@ class Parser:
         # Must have at least one identifier
         if self.current_token.type != TOKEN_IDENTIFIER:
             return res.failure(
-                SASLSyntaxError(
+                B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
                     "Expected variable identifier name after 'var' or 'const'.",
@@ -169,7 +169,7 @@ class Parser:
             res.register(self.forward())
             if self.current_token.type != TOKEN_IDENTIFIER:
                 return res.failure(
-                    SASLSyntaxError(
+                    B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
                         "Expected identifier name after ','.",
@@ -187,10 +187,21 @@ class Parser:
                 res.register(self.forward())
             else:
                 return res.failure(
-                    SASLSyntaxError(
+                    B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
                         "Expected type identifier after ':'.",
+                    )
+                )
+
+            # Unknown type names are a syntax error, not silent weak typing.
+            if TYPE_MAP.get(type_tok.value.lower()) is None:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        type_tok.pos_start,
+                        type_tok.pos_end,
+                        f"Unknown data type '{type_tok.value}'. "
+                        f"Valid types: number, boolean, complex, string, empty.",
                     )
                 )
 
@@ -214,7 +225,7 @@ class Parser:
             # Check for invalid syntax: comma on RHS during initialization (e.g. var x, y = 14, none)
             if self.current_token.type == TOKEN_COMMA:
                 return res.failure(
-                    SASLSyntaxError(
+                    B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
                         "Multiple initializers in assignment are not supported.",
@@ -224,7 +235,7 @@ class Parser:
         # Syntax Error Guard: const without value or without explicit type annotation
         if is_const and type_tok is None and value_node is None:
             return res.failure(
-                SASLSyntaxError(
+                B_SharpSyntaxError(
                     start_tok.pos_start,
                     self.current_token.pos_end,
                     "Uninitialized 'const' declaration requires a value or type.",
@@ -235,13 +246,13 @@ class Parser:
         if len(names) == 1:
             return res.success(
                 VariableAssignNode(
-                    names[0], value_node, is_const=is_const, type_tok=type_tok
+                    names[0], value_node, is_const=is_const, type_define=type_tok
                 )
             )
         else:
             return res.success(
                 MultiVariableAssignNode(
-                    names, value_node, is_const=is_const, type_tok=type_tok
+                    names, value_node, is_const=is_const, type_define=type_tok
                 )
             )
 
@@ -276,7 +287,7 @@ class Parser:
         res = self.statement()
         if not res.error and self.current_token.type != TOKEN_EOF:
             return res.failure(
-                SASLSyntaxError(
+                B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
                     "Unexpected token or invalid syntax.",
@@ -377,11 +388,11 @@ class Interpreter:
 
         if error:
             return result.failure(error)
-        return result.success()
+        return result.success(value)
 
     def visit_VariableAssignNode(self, node, context):
         res = RunTimeResult()
-        var_name = node.name_tok.value
+        var_name = node.name.value
 
         if node.value:
             value = res.register(self.visit(node.value, context))
@@ -391,8 +402,8 @@ class Interpreter:
             value = Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
 
         data_type_class = None
-        if node.type:
-            data_type_class = TYPE_MAP.get(node.type.value)
+        if node.data_type:
+            data_type_class = TYPE_MAP.get(node.data_type.value.lower())
 
         val, error = context.variables.set_pos(node.pos_start, node.pos_end).define(
             name=var_name,
@@ -405,7 +416,7 @@ class Interpreter:
             return res.failure(error)
         return res.success(val)
 
-    def visit_MultiVarAssignNode(self, node, context):
+    def visit_MultiVariableAssignNode(self, node, context):
         res = RunTimeResult()
 
         if node.value:
@@ -416,8 +427,8 @@ class Interpreter:
             value = Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
 
         data_type_class = None
-        if node.type:
-            data_type_class = TYPE_MAP.get(node.type.value)
+        if node.data_type:
+            data_type_class = TYPE_MAP.get(node.data_type.value.lower())
 
         last_val = value
         for name_tok in node.names:
@@ -436,7 +447,7 @@ class Interpreter:
 
         return res.success(last_val)
 
-    def visit_VarReassignNode(self, node, context):
+    def visit_VariableReassignNode(self, node, context):
         res = RunTimeResult()
         var_name = node.name.value
 

@@ -1,4 +1,4 @@
-# Variables in SASL are created in one way: 
+# Variables in B-Sharp are created in one way: 
 #   var         x      =    10
 # KEYWORD  IDENTIFIER  EQ   EXPRESSION
 # Constants hold a similar pattern but with unchanged data type

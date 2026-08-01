@@ -1,12 +1,12 @@
 # (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved.
-# The source code of SASL Programming Language.
+# The source code of B_Sharp Programming Language.
 # (Simple Abstracted Syntax Language)
 # The code is guarded and licensed under the GPLv3 License.
 # ----------------------------------------------------------------
-# Module: instances.py: All SASL datatypes and environment
+# Module: instances.py: All B_Sharp datatypes and environment
 # needed-to-define keyword instances (functions, variables, etc.).
 
-from SASL.errors import *
+from B_Sharp.errors import *
 
 
 class Number:
@@ -14,7 +14,7 @@ class Number:
     A datatype representing a number value.
 
     Introduction:\n
-    An atomic data type in SASL that represents a number value. It holds
+    An atomic data type in B_Sharp that represents a number value. It holds
     for a number of any real type: integers or floating numbers mainly.
     Other values may be accepted are doubles. Be careful, because a `Number`
     datatype is only of a decimal value. Hexadecimals, Octals, and Binary
@@ -138,7 +138,7 @@ class Empty:
     A datatype represnting a Null (None) Value.
 
     Introduction:\n
-    An automic data type in SASL that represents a null value. It holds
+    An automic data type in B_Sharp that represents a null value. It holds
     for empty value on runtime unless later explicitly traded with a value.
 
     Usage:\n
@@ -195,8 +195,29 @@ class Reference:
     pass
 
 
-# A helper dictionary for all declared types before
-TYPE_MAP = {"Boolean": Boolean, "Number": Number, "String": String, "Empty": Empty}
+# A helper dictionary for all declared types before.
+# Keys are normalized to lowercase so both `Number` and `number` resolve.
+TYPE_MAP = {
+    "boolean": Boolean,
+    "bool": Boolean,
+    "number": Number,
+    "int": Number,
+    "float": Number,
+    "string": String,
+    "empty": Empty,
+    "complex": Complex,
+    "nan": NaN,
+}
+
+
+class Context:
+    """Runtime scope holding the symbol table that persists across statements."""
+
+    def __init__(self, display_name, parent=None, parent_entry_pos=None):
+        self.display_name = display_name
+        self.parent = parent
+        self.parent_entry_pos = parent_entry_pos
+        self.variables = EnvironmentVariable()
 
 
 class EnvironmentVariable:
@@ -299,6 +320,9 @@ class EnvironmentVariable:
     def _type_mismatch_error(self, data_type, value):
         """Validates value type against declared variable type."""
         if data_type is None:  # Weakly typed variable -> accepts any value
+            return None
+
+        if value is None:  # Uninitialized value is treated as `none`
             return None
 
         # Explicit Empty declaration requires an Empty instance
