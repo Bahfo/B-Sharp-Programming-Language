@@ -8,6 +8,7 @@ class ParserResults:
     def __init__(self):
         self.error = None
         self.node = None
+        self.forward_count = 0
 
     def register(self, res):
         if isinstance(res, ParserResults):
@@ -16,12 +17,17 @@ class ParserResults:
             return res.node
         return res
 
+    def register_forward(self):
+        self.forward_count += 1
+
     def success(self, node):
         self.node = node
         return self
 
     def failure(self, error):
-        self.error = error
+        if not self.error or self.forward_count == 0:
+            self.error = error
+
         return self
 
 
@@ -87,6 +93,13 @@ class Parser:
                     )
                 )
 
+        elif token.matches(TOKEN_KEYWORD, "if"):
+            conditional = res.register(self.if_expression())
+            if res.error:
+                return res
+
+            return res.success(conditional)
+
         return res.failure(
             B_SharpSyntaxError(
                 token.pos_start,
@@ -94,6 +107,81 @@ class Parser:
                 "Expected number, boolean, variable, or '('",
             )
         )
+
+    def if_expression(self):
+        res = ParserResults()
+        cases = []
+        else_case = None
+
+        if not self.current_token.matches(TOKEN_KEYWORD, "if"):
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected a conditional 'if' statement.",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        condition = res.register(self.expression())
+
+        if res.error:
+            return res
+
+        if not self.current_token.matches(TOKEN_KEYWORD, "then"):
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected a conditional followup 'then'.",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        expression = res.register(self.expression())
+        if res.error:
+            return res
+
+        cases.append((condition, expression))
+
+        while self.current_token.matches(TOKEN_KEYWORD, "elif"):
+            res.register_forward()
+            self.forward()
+
+            condition = res.register(self.expression())
+            if res.error:
+                return res
+
+            if not self.current_token.matches(TOKEN_KEYWORD, "then"):
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        f"Expected 'THEN'",
+                    )
+                )
+
+            res.register_forward()
+            self.forward()
+
+            expr = res.register(self.expr())
+            if res.error:
+                return res
+            cases.append((condition, expr))
+
+        if self.current_token.matches(TOKEN_KEYWORD, "else"):
+            res.register_forward()
+            self.forward()
+
+            else_case = res.register(self.expr())
+            if res.error:
+                return res
+
+        return res.success(IfNode(cases, else_case))
 
     def power(self):
         res = ParserResults()
@@ -520,3 +608,26 @@ class Interpreter:
         if error:
             return res.failure(error)
         return res.success(val)
+
+    def visit_IfNode(self, node, context):
+        res = RunTimeResult()
+
+        for condition, expression in node.cases:
+            condition_value = res.register(self.visit(condition, context))
+            if res.error:
+                return res
+
+            if condition_value.true_():
+                expression_value = res.register(self.visit(expression, context))
+                if res.error:
+                    return res
+                return res.success(expression_value)
+
+        if node.else_case:
+            else_value = res.register(self.visit(node.else_case, context))
+            if res.error:
+                return res
+
+            return res.success(else_value)
+
+        return res.success(None)

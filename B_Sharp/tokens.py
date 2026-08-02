@@ -35,9 +35,13 @@ TOKEN_NOT_E = "NOT_EQUAL"
 # All Keywords
 KEYWORDS = [
     "or",
+    "if",
     "var",
     "and",
     "not",
+    "else",
+    "elif",
+    "then",
     "none",
     "true",
     "false",

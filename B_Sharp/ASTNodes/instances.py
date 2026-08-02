@@ -126,73 +126,61 @@ class Number:
         if isinstance(other, (Number, Boolean)):
             other = self._to_number(other)
             return Boolean(self.value == other.value), None
-        return None, ComparisonError(
-            self.pos_start, self.pos_end,
-            "Unexpected type for equality comparison.",
-        )
+        return Boolean(False), None
 
     def not_equal(self, other):
         if isinstance(other, (Number, Boolean)):
             other = self._to_number(other)
             return Boolean(self.value != other.value), None
-        return None, ComparisonError(
-            self.pos_start, self.pos_end,
-            "Unexpected type for inequality comparison.",
-        )
+        return Boolean(True), None
 
     def less_than(self, other):
         if isinstance(other, (Number, Boolean)):
             other = self._to_number(other)
             return Boolean(self.value < other.value), None
-        return None, ComparisonError(
-            self.pos_start, self.pos_end,
-            "Unexpected type for less-than comparison.",
-        )
+        return Boolean(False), None
 
     def greater_than(self, other):
         if isinstance(other, (Number, Boolean)):
             other = self._to_number(other)
             return Boolean(self.value > other.value), None
-        return None, ComparisonError(
-            self.pos_start, self.pos_end,
-            "Unexpected type for greater-than comparison.",
-        )
+        return Boolean(False), None
 
     def less_than_equal(self, other):
         if isinstance(other, (Number, Boolean)):
             other = self._to_number(other)
             return Boolean(self.value <= other.value), None
-        return None, ComparisonError(
-            self.pos_start, self.pos_end,
-            "Unexpected type for less-than-or-equal comparison.",
-        )
+        return Boolean(False), None
 
     def greater_than_equal(self, other):
         if isinstance(other, (Number, Boolean)):
             other = self._to_number(other)
             return Boolean(self.value >= other.value), None
-        return None, ComparisonError(
-            self.pos_start, self.pos_end,
-            "Unexpected type for greater-than-or-equal comparison.",
-        )
+        return Boolean(False), None
 
     def and_(self, other):
         return None, RunTimeError(
-            self.pos_start, self.pos_end,
+            self.pos_start,
+            self.pos_end,
             "Unexpected type for 'and' operation.",
         )
 
     def or_(self, other):
         return None, RunTimeError(
-            self.pos_start, self.pos_end,
+            self.pos_start,
+            self.pos_end,
             "Unexpected type for 'or' operation.",
         )
 
     def not_(self):
         return None, RunTimeError(
-            self.pos_start, self.pos_end,
+            self.pos_start,
+            self.pos_end,
             "Unexpected type for 'not' operation.",
         )
+
+    def true_(self):
+        return self.value != 0
 
     def __repr__(self):
         return str(self.value)
@@ -246,66 +234,49 @@ class Boolean:
             other_num = self._to_number(other)
             my_num = Number(1 if self.value else 0)
             return Boolean(my_num.value == other_num.value), None
-        return None, ComparisonError(
-            self.pos_start, self.pos_end,
-            "Unexpected type for equality comparison.",
-        )
+        return Boolean(False), None
 
     def not_equal(self, other):
         if isinstance(other, (Number, Boolean)):
             other_num = self._to_number(other)
             my_num = Number(1 if self.value else 0)
             return Boolean(my_num.value != other_num.value), None
-        return None, ComparisonError(
-            self.pos_start, self.pos_end,
-            "Unexpected type for inequality comparison.",
-        )
+        return Boolean(True), None
 
     def less_than(self, other):
         if isinstance(other, (Number, Boolean)):
             other_num = self._to_number(other)
             my_num = Number(1 if self.value else 0)
             return Boolean(my_num.value < other_num.value), None
-        return None, ComparisonError(
-            self.pos_start, self.pos_end,
-            "Unexpected type for less-than comparison.",
-        )
+        return Boolean(False), None
 
     def greater_than(self, other):
         if isinstance(other, (Number, Boolean)):
             other_num = self._to_number(other)
             my_num = Number(1 if self.value else 0)
             return Boolean(my_num.value > other_num.value), None
-        return None, ComparisonError(
-            self.pos_start, self.pos_end,
-            "Unexpected type for greater-than comparison.",
-        )
+        return Boolean(False), None
 
     def less_than_equal(self, other):
         if isinstance(other, (Number, Boolean)):
             other_num = self._to_number(other)
             my_num = Number(1 if self.value else 0)
             return Boolean(my_num.value <= other_num.value), None
-        return None, ComparisonError(
-            self.pos_start, self.pos_end,
-            "Unexpected type for less-than-or-equal comparison.",
-        )
+        return Boolean(False), None
 
     def greater_than_equal(self, other):
         if isinstance(other, (Number, Boolean)):
             other_num = self._to_number(other)
             my_num = Number(1 if self.value else 0)
             return Boolean(my_num.value >= other_num.value), None
-        return None, ComparisonError(
-            self.pos_start, self.pos_end,
-            "Unexpected type for greater-than-or-equal comparison.",
-        )
+        return Boolean(False), None
 
     def and_(self, other):
         if isinstance(other, Boolean):
             return Boolean(self.value and other.value), None
         return None, ComparisonError(
-            self.pos_start, self.pos_end,
+            self.pos_start,
+            self.pos_end,
             "Unexpected type for 'and' operation.",
         )
 
@@ -313,7 +284,8 @@ class Boolean:
         if isinstance(other, Boolean):
             return Boolean(self.value or other.value), None
         return None, ComparisonError(
-            self.pos_start, self.pos_end,
+            self.pos_start,
+            self.pos_end,
             "Unexpected type for 'or' operation.",
         )
 
@@ -322,33 +294,41 @@ class Boolean:
 
     def addition(self, other):
         return None, RunTimeError(
-            self.pos_start, self.pos_end,
+            self.pos_start,
+            self.pos_end,
             "Unexpected type for addition operation.",
         )
 
     def subtraction(self, other):
         return None, RunTimeError(
-            self.pos_start, self.pos_end,
+            self.pos_start,
+            self.pos_end,
             "Unexpected type for subtraction operation.",
         )
 
     def multiplication(self, other):
         return None, RunTimeError(
-            self.pos_start, self.pos_end,
+            self.pos_start,
+            self.pos_end,
             "Unexpected type for multiplication operation.",
         )
 
     def division(self, other):
         return None, RunTimeError(
-            self.pos_start, self.pos_end,
+            self.pos_start,
+            self.pos_end,
             "Unexpected type for division operation.",
         )
 
     def power(self, other):
         return None, RunTimeError(
-            self.pos_start, self.pos_end,
+            self.pos_start,
+            self.pos_end,
             "Unexpected type for power operation.",
         )
+
+    def true_(self):
+        return self.value
 
     def __repr__(self):
         return "true" if self.value == True else "false"
@@ -411,6 +391,19 @@ class Empty:
     def set_context(self, context=None):
         self.context = context
         return self
+
+    def true_(self):
+        return False
+
+    def is_equal(self, other):
+        if isinstance(other, Empty):
+            return Boolean(True), None
+        return Boolean(False), None
+
+    def not_equal(self, other):
+        if isinstance(other, Empty):
+            return Boolean(False), None
+        return Boolean(True), None
 
     def __repr__(self):
         return "none"

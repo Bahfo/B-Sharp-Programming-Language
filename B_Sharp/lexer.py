@@ -23,6 +23,9 @@ class Token:
         if pos_end:
             self.pos_end = pos_end.copy()
 
+    def matches(self, type_, value=None):
+        return self.type == type_ and (value is None or self.value == value)
+
     def __repr__(self):
         if self.value:
             return f"{self.type} : {self.value}"

@@ -11,6 +11,8 @@ global_context = Context("<program>")
 
 while True:
     text = input("B_Sharp >>> ")
+    if not text.strip():
+        continue
     ast, error = lexer.run("<SHELL_STD_REPL>", text)
 
     if error:
@@ -24,4 +26,5 @@ while True:
         elif not isinstance(
             ast, (VariableAssignNode, MultiVariableAssignNode, VariableReassignNode)
         ):
-            print(result.value)
+            if result.value is not None:
+                print(result.value)
