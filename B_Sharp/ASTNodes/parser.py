@@ -1,5 +1,3 @@
-# B_Sharp/ASTNodes/parser.py
-
 from B_Sharp.tokens import *
 from B_Sharp.errors import *
 from B_Sharp.ASTNodes.instances import *
@@ -42,42 +40,41 @@ class Parser:
 
     ################################################################
     # Grammar Rules
+    # Precedence (lowest to highest):
+    #   expression  → and | or
+    #   comparison  → == != < > <= >=
+    #   term        → + -
+    #   factor      → * /
+    #   unary       → + - not
+    #   power       → ^
+    #   atom        → INT FLOAT BOOLEAN IDENTIFIER none (expr)
     ################################################################
 
-    def factor(self):
+    def atom(self):
         res = ParserResults()
         token = self.current_token
 
-        # Unary operations (+x, -x)
-        if token.type in (TOKEN_PLUS, TOKEN_MINUS):
-            res.register(self.forward())
-            factor = res.register(self.factor())
-            if res.error:
-                return res
-            return res.success(BinaryNegationNode(token, factor))
-
-        # Numbers
-        elif token.type in (TOKEN_INT, TOKEN_FLOAT):
+        if token.type in (TOKEN_INT, TOKEN_FLOAT):
             res.register(self.forward())
             return res.success(NumberNode(token))
 
-        # Literal `none`
         elif token.type == TOKEN_KEYWORD and token.value == "none":
             res.register(self.forward())
             return res.success(NoneNode(token))
 
-        # Variable access (reading a variable)
+        elif token.type == TOKEN_KEYWORD and token.value in ("true", "false"):
+            res.register(self.forward())
+            return res.success(BooleanNode(token))
+
         elif token.type == TOKEN_IDENTIFIER:
             res.register(self.forward())
             return res.success(VariableAccessNode(token))
 
-        # Parenthesized expressions
         elif token.type == TOKEN_LPAREN:
             res.register(self.forward())
             expression = res.register(self.expression())
             if res.error:
                 return res
-
             if self.current_token.type == TOKEN_RPAREN:
                 res.register(self.forward())
                 return res.success(expression)
@@ -92,31 +89,65 @@ class Parser:
 
         return res.failure(
             B_SharpSyntaxError(
-                token.pos_start, token.pos_end, "Expected number, variable, or '('"
+                token.pos_start,
+                token.pos_end,
+                "Expected number, boolean, variable, or '('",
             )
         )
 
     def power(self):
         res = ParserResults()
-        left = res.register(self.factor())
+        left = res.register(self.atom())
         if res.error:
             return res
 
         if self.current_token.type == TOKEN_POWER:
             op_token = self.current_token
             res.register(self.forward())
-            right = res.register(self.power())
+            right = res.register(self.unary())
             if res.error:
                 return res
             left = BinaryOpNode(left, op_token, right)
 
         return res.success(left)
 
+    def unary(self):
+        res = ParserResults()
+        token = self.current_token
+
+        if token.type in (TOKEN_PLUS, TOKEN_MINUS):
+            res.register(self.forward())
+            operand = res.register(self.unary())
+            if res.error:
+                return res
+            return res.success(UnaryOpNode(token, operand))
+
+        if token.type == TOKEN_KEYWORD and token.value == "not":
+            res.register(self.forward())
+            operand = res.register(self.unary())
+            if res.error:
+                return res
+            return res.success(UnaryOpNode(token, operand))
+
+        return self.power()
+
+    def factor(self):
+        return self.binary_operation(self.unary, (TOKEN_MUL, TOKEN_DIV))
+
     def term(self):
-        return self.binary_operation(self.power, (TOKEN_MUL, TOKEN_DIV))
+        return self.binary_operation(self.factor, (TOKEN_PLUS, TOKEN_MINUS))
+
+    def comparison(self):
+        return self.binary_operation(
+            self.term,
+            (TOKEN_EE, TOKEN_NOT_E, TOKEN_LT, TOKEN_GT, TOKEN_LTE, TOKEN_GTE),
+        )
 
     def expression(self):
-        return self.binary_operation(self.term, (TOKEN_PLUS, TOKEN_MINUS))
+        return self.binary_operation(
+            self.comparison,
+            (TOKEN_KEYWORD,),
+        )
 
     def binary_operation(self, function, operations):
         res = ParserResults()
@@ -125,6 +156,11 @@ class Parser:
             return res
 
         while self.current_token.type in operations:
+            if (
+                self.current_token.type == TOKEN_KEYWORD
+                and self.current_token.value not in ("and", "or")
+            ):
+                break
             op_token = self.current_token
             res.register(self.forward())
             right = res.register(function())
@@ -149,9 +185,8 @@ class Parser:
         res = ParserResults()
         is_const = self.current_token.value == "const"
         start_tok = self.current_token
-        res.register(self.forward())  # Consume 'var' or 'const'
+        res.register(self.forward())
 
-        # Must have at least one identifier
         if self.current_token.type != TOKEN_IDENTIFIER:
             return res.failure(
                 B_SharpSyntaxError(
@@ -164,7 +199,6 @@ class Parser:
         names = [self.current_token]
         res.register(self.forward())
 
-        # Collect comma-separated variable names (e.g. var x, y, z)
         while self.current_token.type == TOKEN_COMMA:
             res.register(self.forward())
             if self.current_token.type != TOKEN_IDENTIFIER:
@@ -178,7 +212,6 @@ class Parser:
             names.append(self.current_token)
             res.register(self.forward())
 
-        # Optional type declaration `: Type`
         type_tok = None
         if self.current_token.type == TOKEN_COLON:
             res.register(self.forward())
@@ -194,7 +227,6 @@ class Parser:
                     )
                 )
 
-            # Unknown type names are a syntax error, not silent weak typing.
             if TYPE_MAP.get(type_tok.value.lower()) is None:
                 return res.failure(
                     B_SharpSyntaxError(
@@ -205,12 +237,10 @@ class Parser:
                     )
                 )
 
-        # Value assignment `= value`
         value_node = None
         if self.current_token.type == TOKEN_EQUAL:
             res.register(self.forward())
 
-            # Support chained declarations (e.g., var x = var y = 15)
             if (
                 self.current_token.type == TOKEN_KEYWORD
                 and self.current_token.value in ("var", "const")
@@ -222,7 +252,6 @@ class Parser:
             if res.error:
                 return res
 
-            # Check for invalid syntax: comma on RHS during initialization (e.g. var x, y = 14, none)
             if self.current_token.type == TOKEN_COMMA:
                 return res.failure(
                     B_SharpSyntaxError(
@@ -232,7 +261,6 @@ class Parser:
                     )
                 )
 
-        # Syntax Error Guard: const without value or without explicit type annotation
         if is_const and type_tok is None and value_node is None:
             return res.failure(
                 B_SharpSyntaxError(
@@ -242,7 +270,6 @@ class Parser:
                 )
             )
 
-        # Return single or multi node
         if len(names) == 1:
             return res.success(
                 VariableAssignNode(
@@ -260,27 +287,24 @@ class Parser:
         """Top-level parser entry for statements"""
         res = ParserResults()
 
-        # Variable Declaration (var / const)
         if self.current_token.type == TOKEN_KEYWORD and self.current_token.value in (
             "var",
             "const",
         ):
             return self.var_decl()
 
-        # Variable Reassignment (x = value)
         if self.current_token.type == TOKEN_IDENTIFIER and self.token_index + 1 < len(
             self.tokens
         ):
             if self.tokens[self.token_index + 1].type == TOKEN_EQUAL:
                 name_tok = self.current_token
-                res.register(self.forward())  # Consume name
-                res.register(self.forward())  # Consume '='
+                res.register(self.forward())
+                res.register(self.forward())
                 value_node = res.register(self.expression())
                 if res.error:
                     return res
                 return res.success(VariableReassignNode(name_tok, value_node))
 
-        # Default: Standard Expression
         return self.expression()
 
     def parser(self):
@@ -326,13 +350,21 @@ class Interpreter:
     def no_visit_method(self, node, context):
         raise Exception(f"No visit_{type(node).__name__} method defined")
 
-    ###################################
+    ################################################################
+    # Visitors
+    ################################################################
 
     def visit_NumberNode(self, node, context):
         return RunTimeResult().success(
             Number(node.token.value)
             .set_context(context)
             .set_pos(node.pos_start, node.pos_end)
+        )
+
+    def visit_BooleanNode(self, node, context):
+        value = node.token.value == "true"
+        return RunTimeResult().success(
+            Boolean(value).set_context(context).set_pos(node.pos_start, node.pos_end)
         )
 
     def visit_NoneNode(self, node, context):
@@ -360,24 +392,50 @@ class Interpreter:
             result, error = left.division(right)
         elif node.op_token.type == TOKEN_POWER:
             result, error = left.power(right)
+        elif node.op_token.type == TOKEN_EE:
+            result, error = left.is_equal(right)
+        elif node.op_token.type == TOKEN_NOT_E:
+            result, error = left.not_equal(right)
+        elif node.op_token.type == TOKEN_LT:
+            result, error = left.less_than(right)
+        elif node.op_token.type == TOKEN_GT:
+            result, error = left.greater_than(right)
+        elif node.op_token.type == TOKEN_LTE:
+            result, error = left.less_than_equal(right)
+        elif node.op_token.type == TOKEN_GTE:
+            result, error = left.greater_than_equal(right)
+        elif node.op_token.type == TOKEN_KEYWORD and node.op_token.value == "and":
+            result, error = left.and_(right)
+        elif node.op_token.type == TOKEN_KEYWORD and node.op_token.value == "or":
+            result, error = left.or_(right)
 
         if error:
             return res.failure(error)
         else:
             return res.success(result.set_pos(node.pos_start, node.pos_end))
 
-    def visit_BinaryNegationNode(self, node, context):
+    def visit_UnaryOpNode(self, node, context):
         res = RunTimeResult()
-        number = res.register(self.visit(node.node, context))
+        operand = res.register(self.visit(node.node, context))
         if res.error:
             return res
 
         if node.op_token.type == TOKEN_MINUS:
-            number, error = number.multiplication(Number(-1))
-            if error:
-                return res.failure(error)
+            result, error = operand.multiplication(Number(-1))
+        elif node.op_token.type == TOKEN_PLUS:
+            result, error = operand, None
+        elif node.op_token.type == TOKEN_KEYWORD and node.op_token.value == "not":
+            result, error = operand.not_()
+        else:
+            result, error = None, RunTimeError(
+                node.op_token.pos_start,
+                node.op_token.pos_end,
+                f"Unknown unary operator '{node.op_token.value}'.",
+            )
 
-        return res.success(number.set_pos(node.pos_start, node.pos_end))
+        if error:
+            return res.failure(error)
+        return res.success(result.set_pos(node.pos_start, node.pos_end))
 
     def visit_VariableAccessNode(self, node, context):
         result = RunTimeResult()

@@ -6,36 +6,41 @@ class Error:
         self.details = details
 
     def as_string(self):
-        result = f"{self.error_name} : {self.details}\n"
+        result = f"{self.error_name} :\n{self.details}\n"
         result += f"File {self.pos_start.file_name}, Ln: {self.pos_start.line + 1}"
         return result
 
 
 class IllegalCharacaterError(Error):
     def __init__(self, pos_start, pos_end, details):
-        super().__init__(pos_start, pos_end, "Illegal Character\n", details)
+        super().__init__(pos_start, pos_end, "Illegal Character", details)
 
 
 class B_SharpSyntaxError(Error):
     def __init__(self, pos_start, pos_end, details):
-        super().__init__(pos_start, pos_end, "Syntax Error\n", details)
+        super().__init__(pos_start, pos_end, "Syntax Error", details)
 
 
 class RunTimeError(Error):
     def __init__(self, pos_start, pos_end, details):
-        super().__init__(pos_start, pos_end, "RunTime Error\n", details)
+        super().__init__(pos_start, pos_end, "RunTime Error", details)
 
 
 class AssignmentError(Error):
     def __init__(self, pos_start, pos_end, details):
-        super().__init__(pos_start, pos_end, "Uncaught Assignment Error.\n", details)
+        super().__init__(pos_start, pos_end, "Uncaught Assignment Error.", details)
 
 
 class ModificationError(Error):
     def __init__(self, pos_start, pos_end, details):
-        super().__init__(pos_start, pos_end, "Uncaught Modification Error.\n", details)
+        super().__init__(pos_start, pos_end, "Uncaught Modification Error.", details)
 
 
 class EmptynessUnmatchedError(Error):
     def __init__(self, pos_start, pos_end, details):
-        super().__init__(pos_start, pos_end, "Assigning to Empty Error.\n", details)
+        super().__init__(pos_start, pos_end, "Assigning to Empty Error.", details)
+
+
+class ComparisonError(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, "Comparison Syntax Error.", details)

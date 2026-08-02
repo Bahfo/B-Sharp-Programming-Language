@@ -117,12 +117,241 @@ class Number:
                 "Unexpected type for power operation.",
             )
 
+    def _to_number(self, other):
+        if isinstance(other, Boolean):
+            return Number(1 if other.value else 0)
+        return other
+
+    def is_equal(self, other):
+        if isinstance(other, (Number, Boolean)):
+            other = self._to_number(other)
+            return Boolean(self.value == other.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for equality comparison.",
+        )
+
+    def not_equal(self, other):
+        if isinstance(other, (Number, Boolean)):
+            other = self._to_number(other)
+            return Boolean(self.value != other.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for inequality comparison.",
+        )
+
+    def less_than(self, other):
+        if isinstance(other, (Number, Boolean)):
+            other = self._to_number(other)
+            return Boolean(self.value < other.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for less-than comparison.",
+        )
+
+    def greater_than(self, other):
+        if isinstance(other, (Number, Boolean)):
+            other = self._to_number(other)
+            return Boolean(self.value > other.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for greater-than comparison.",
+        )
+
+    def less_than_equal(self, other):
+        if isinstance(other, (Number, Boolean)):
+            other = self._to_number(other)
+            return Boolean(self.value <= other.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for less-than-or-equal comparison.",
+        )
+
+    def greater_than_equal(self, other):
+        if isinstance(other, (Number, Boolean)):
+            other = self._to_number(other)
+            return Boolean(self.value >= other.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for greater-than-or-equal comparison.",
+        )
+
+    def and_(self, other):
+        return None, RunTimeError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for 'and' operation.",
+        )
+
+    def or_(self, other):
+        return None, RunTimeError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for 'or' operation.",
+        )
+
+    def not_(self):
+        return None, RunTimeError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for 'not' operation.",
+        )
+
     def __repr__(self):
         return str(self.value)
 
 
 class Boolean:
-    pass
+    """
+    A datatype representing a boolean value (true | false).
+
+    Introduction:\n
+    Booleans are atomic datatypes. They consist of two keywords: `true` and
+    `false`. B-Sharp implements both keywords in its syntax.
+
+    Usage:\n
+    Booleans are associated with comparisons. If one comparison rule is added,
+    a boolean type is always detected. For example:
+    ```
+    if (x == 4) { // A logical operator returning either true or false.
+        // Expression
+    }
+    ```
+    Booleans can be also used in variables assignments. For example:
+    ```
+    var boolean_example : Boolean = true
+    var boolean_2 = false
+    const BooleanValue = true
+    ```
+    """
+
+    def __init__(self, value: bool):
+        self.value = value
+        self.set_pos()
+        self.set_context()
+
+    def set_context(self, context=None):
+        self.context = context
+        return self
+
+    def set_pos(self, pos_start=None, pos_end=None):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        return self
+
+    def _to_number(self, other):
+        if isinstance(other, Boolean):
+            return Number(1 if other.value else 0)
+        return other
+
+    def is_equal(self, other):
+        if isinstance(other, (Number, Boolean)):
+            other_num = self._to_number(other)
+            my_num = Number(1 if self.value else 0)
+            return Boolean(my_num.value == other_num.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for equality comparison.",
+        )
+
+    def not_equal(self, other):
+        if isinstance(other, (Number, Boolean)):
+            other_num = self._to_number(other)
+            my_num = Number(1 if self.value else 0)
+            return Boolean(my_num.value != other_num.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for inequality comparison.",
+        )
+
+    def less_than(self, other):
+        if isinstance(other, (Number, Boolean)):
+            other_num = self._to_number(other)
+            my_num = Number(1 if self.value else 0)
+            return Boolean(my_num.value < other_num.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for less-than comparison.",
+        )
+
+    def greater_than(self, other):
+        if isinstance(other, (Number, Boolean)):
+            other_num = self._to_number(other)
+            my_num = Number(1 if self.value else 0)
+            return Boolean(my_num.value > other_num.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for greater-than comparison.",
+        )
+
+    def less_than_equal(self, other):
+        if isinstance(other, (Number, Boolean)):
+            other_num = self._to_number(other)
+            my_num = Number(1 if self.value else 0)
+            return Boolean(my_num.value <= other_num.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for less-than-or-equal comparison.",
+        )
+
+    def greater_than_equal(self, other):
+        if isinstance(other, (Number, Boolean)):
+            other_num = self._to_number(other)
+            my_num = Number(1 if self.value else 0)
+            return Boolean(my_num.value >= other_num.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for greater-than-or-equal comparison.",
+        )
+
+    def and_(self, other):
+        if isinstance(other, Boolean):
+            return Boolean(self.value and other.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for 'and' operation.",
+        )
+
+    def or_(self, other):
+        if isinstance(other, Boolean):
+            return Boolean(self.value or other.value), None
+        return None, ComparisonError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for 'or' operation.",
+        )
+
+    def not_(self):
+        return Boolean(not self.value), None
+
+    def addition(self, other):
+        return None, RunTimeError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for addition operation.",
+        )
+
+    def subtraction(self, other):
+        return None, RunTimeError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for subtraction operation.",
+        )
+
+    def multiplication(self, other):
+        return None, RunTimeError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for multiplication operation.",
+        )
+
+    def division(self, other):
+        return None, RunTimeError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for division operation.",
+        )
+
+    def power(self, other):
+        return None, RunTimeError(
+            self.pos_start, self.pos_end,
+            "Unexpected type for power operation.",
+        )
+
+    def __repr__(self):
+        return "true" if self.value == True else "false"
 
 
 class Complex:
@@ -211,7 +440,9 @@ TYPE_MAP = {
 
 
 class Context:
-    """Runtime scope holding the symbol table that persists across statements."""
+    """
+    Runtime scope holding the variables table that persists across statements.
+    """
 
     def __init__(self, display_name, parent=None, parent_entry_pos=None):
         self.display_name = display_name
@@ -280,7 +511,7 @@ class EnvironmentVariable:
     def assign(self, name, value):
         """Updates an existing variable value."""
 
-        # 1. Check existence
+        # Check existence
         if name not in self.variables:
             return None, AssignmentError(
                 self.pos_start,
@@ -290,7 +521,7 @@ class EnvironmentVariable:
 
         entry = self.variables[name]
 
-        # 2. Check immutability (const)
+        # Check immutability (const)
         if entry["is_const"]:
             return None, ModificationError(
                 self.pos_start,
@@ -298,12 +529,12 @@ class EnvironmentVariable:
                 f"Cannot change value of '{name}' of type const.",
             )
 
-        # 3. Check type compatibility
+        # Check type compatibility
         type_error = self._type_mismatch_error(entry["type"], value)
         if type_error:
             return None, type_error
 
-        # 4. Update value
+        # Update value
         entry["value"] = value
         return value, None
 
@@ -319,7 +550,7 @@ class EnvironmentVariable:
 
     def _type_mismatch_error(self, data_type, value):
         """Validates value type against declared variable type."""
-        if data_type is None:  # Weakly typed variable -> accepts any value
+        if data_type is None:  # Weakly typed variable will accepts any value
             return None
 
         if value is None:  # Uninitialized value is treated as `none`
@@ -336,7 +567,7 @@ class EnvironmentVariable:
                 f"Cannot assign value of type {val_type_str} to a variable declared with Empty.",
             )
 
-        # Strongly typed variable -> accepts target type OR Empty (none)
+        # Strongly typed variable will accepts target type OR Empty (none)
         if isinstance(value, data_type) or isinstance(value, Empty):
             return None
 

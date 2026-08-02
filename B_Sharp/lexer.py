@@ -1,6 +1,6 @@
-from B_Sharp.errors import IllegalCharacaterError
 from B_Sharp.ASTNodes.parser import Parser
 from B_Sharp.position import Position
+from B_Sharp.errors import *
 from B_Sharp.tokens import *
 
 import string
@@ -77,6 +77,54 @@ class Lexer:
         # Returning the new token
         return Token(token_type, identifier, pos_start, self.pos)
 
+    def make_token_not_equal(self):
+        pos_start = self.pos.copy()
+        self.forward()
+
+        if self.current_char == "=":
+            self.forward()
+            return Token(TOKEN_NOT_E, pos_start, self.pos), None
+
+        self.forward()
+        return None, B_SharpSyntaxError(
+            pos_start,
+            self.pos,
+            "Expected an equalizer after NOT logical operation",
+        )
+
+    def make_token_equal(self):
+        pos_start = self.pos.copy()
+        token_type = TOKEN_EQUAL
+        self.forward()
+
+        if self.current_char == "=":
+            self.forward()
+            token_type = TOKEN_EE
+
+        return Token(token_type, pos_start, self.pos)
+
+    def make_token_greater_than(self):
+        pos_start = self.pos.copy()
+        token_type = TOKEN_GT
+        self.forward()
+
+        if self.current_char == "=":
+            self.forward()
+            token_type = TOKEN_GTE
+
+        return Token(token_type, pos_start, self.pos)
+
+    def make_token_less_than(self):
+        pos_start = self.pos.copy()
+        token_type = TOKEN_LT
+        self.forward()
+
+        if self.current_char == "=":
+            self.forward()
+            token_type = TOKEN_LTE
+
+        return Token(token_type, pos_start, self.pos)
+
     def tokenize(self):
         tokens = []
 
@@ -85,6 +133,8 @@ class Lexer:
                 self.forward()
             elif self.current_char in LETTERS:
                 tokens.append(self.identifiers())
+            elif self.current_char in DIGITS:
+                tokens.append(self.numberize())
             elif self.current_char == "+":
                 tokens.append(Token(TOKEN_PLUS, pos_start=self.pos))
                 self.forward()
@@ -106,17 +156,24 @@ class Lexer:
             elif self.current_char == "^":
                 tokens.append(Token(TOKEN_POWER, pos_start=self.pos))
                 self.forward()
-            elif self.current_char == "=":
-                tokens.append(Token(TOKEN_EQUAL, pos_start=self.pos))
-                self.forward()
             elif self.current_char == ":":
                 tokens.append(Token(TOKEN_COLON, pos_start=self.pos))
                 self.forward()
             elif self.current_char == ",":
                 tokens.append(Token(TOKEN_COMMA, pos_start=self.pos))
                 self.forward()
-            elif self.current_char in DIGITS:
-                tokens.append(self.numberize())
+            elif self.current_char == "!":
+                token, error = self.make_token_not_equal()
+                if error:
+                    return [], error
+                if token:
+                    tokens.append(token)
+            elif self.current_char == "=":
+                tokens.append(self.make_token_equal())
+            elif self.current_char == ">":
+                tokens.append(self.make_token_greater_than())
+            elif self.current_char == "<":
+                tokens.append(self.make_token_less_than())
             else:
                 pos_start = self.pos.copy()
                 char = self.current_char

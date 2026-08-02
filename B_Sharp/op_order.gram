@@ -4,5 +4,16 @@
 # rules assigned to each.
 
 EXPR    : TERM ((PLUS | MINUS) TERM) *
+        : EXPR (AND | OR) EXPR
+        : NOT EXPR
+        : EXPR (EE|LT|GT|NE|LTE|GTE) EXPR
 TERM    : FACTOR ((MUL | DIV) FACTOR) *
-FACTOR  : INT | FLOAT
+FACTOR  : (PLUS | MINUS) FACTOR 
+        : POWER
+POWER   : ATOM (POWER FACTOR) *
+ATOM    : INT | FLOAT | IDENTIFIER
+        : LPARENT EXPR RPAREN
+
+# 
+# 
+# 

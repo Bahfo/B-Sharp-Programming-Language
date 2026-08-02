@@ -24,11 +24,23 @@ TOKEN_IDENTIFIER = "IDENTIFIER"
 TOKEN_EQUAL = "EQ"
 TOKEN_COLON = "COLON"
 TOKEN_COMMA = "COMMA"
+# Comparisons
+TOKEN_EE = "EQUAL_EQUAL"
+TOKEN_LT = "LESS_THAN"
+TOKEN_GT = "GREATER_THAN"
+TOKEN_LTE = "LESS_THAN_EQUAL"
+TOKEN_GTE = "GREATER_THAN_EQUAL"
+TOKEN_NOT_E = "NOT_EQUAL"
 
 # All Keywords
 KEYWORDS = [
+    "or",
     "var",
+    "and",
+    "not",
     "none",
+    "true",
+    "false",
     "const",
     "Empty",
     "Number",
