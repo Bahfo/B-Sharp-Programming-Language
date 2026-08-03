@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="100pt"
+   height="100pt"
+   viewBox="0 0 35.277777 35.277777"
+   version="1.1"
+   id="svg5"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   sodipodi:docname="bsharp_extension.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="5.97"
+     inkscape:cx="66.582915"
+     inkscape:cy="66.834171"
+     inkscape:window-width="1920"
+     inkscape:window-height="994"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g3901" />
+  <defs
+     id="defs2" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <g
+       id="g3901"
+       transform="matrix(1.012639,0,0,0.94348051,0,0.99694317)"
+       style="fill:#009ef2;fill-opacity:1">
+      <g
+         id="g405"
+         transform="matrix(1.0864592,0,0,1.0864592,-0.80323214,-1.5250436)">
+        <text
+           xml:space="preserve"
+           style="font-size:31.9977px;font-family:'Segoe UI';-inkscape-font-specification:'Segoe UI';fill:#009ef2;fill-opacity:1;stroke-width:0.971812;stroke-linecap:round;paint-order:stroke fill markers"
+           x="1.6508982"
+           y="28.841198"
+           id="text294"><tspan
+             sodipodi:role="line"
+             id="tspan292"
+             style="font-weight:bold;fill:#009ef2;fill-opacity:1;stroke-width:0.971812"
+             x="1.6508982"
+             y="28.841198">B</tspan></text>
+        <text
+           xml:space="preserve"
+           style="font-size:21.8582px;font-family:'Segoe UI';-inkscape-font-specification:'Segoe UI';fill:#009ef2;fill-opacity:1;stroke-width:0.663859;stroke-linecap:round;paint-order:stroke fill markers"
+           x="34.519878"
+           y="19.324825"
+           id="text402"
+           transform="scale(0.62452547,1.6012157)"><tspan
+             sodipodi:role="line"
+             id="tspan400"
+             style="fill:#009ef2;fill-opacity:1;stroke-width:0.663859"
+             x="34.519878"
+             y="19.324825">#</tspan></text>
+      </g>
+    </g>
+  </g>
+</svg>
