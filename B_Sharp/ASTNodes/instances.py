@@ -339,7 +339,57 @@ class Complex:
 
 
 class String:
-    pass
+    """ """
+
+    def __init__(self, value: str):
+        self.value = str(value)
+        self.set_pos()
+        self.set_context()
+
+    def set_context(self, context=None):
+        self.context = context
+        return self
+
+    def set_pos(self, pos_start=None, pos_end=None):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        return self
+
+    def addition(self, other):
+        if isinstance(other, String):
+            return String(self.value + other.value), None
+        elif isinstance(other, (Number, Boolean)):
+            return String(self.value + str(other)), None
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for string addition.",
+        )
+
+    def multiplication(self, other):
+        if isinstance(other, Number) and isinstance(other.value, int):
+            return String(self.value * other.value), None
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "String multiplication requires an integer power factor.",
+        )
+
+    def is_equal(self, other):
+        if isinstance(other, String):
+            return Boolean(self.value == other.value), None
+        return Boolean(False), None
+
+    def not_equal(self, other):
+        if isinstance(other, String):
+            return Boolean(self.value != other.value), None
+        return Boolean(True), None
+
+    def true_(self):
+        return len(self.value) > 0
+
+    def __repr__(self):
+        return f'"{self.value}"'
 
 
 class Empty:

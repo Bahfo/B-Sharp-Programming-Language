@@ -16,6 +16,8 @@ TOKEN_LPAREN = "LPAREN"
 TOKEN_RPAREN = "RPAREN"
 TOKEN_EOF = "EOF"
 TOKEN_POWER = "POWER"
+TOKEN_INC = "INC"
+TOKEN_DEC = "DEC"
 # Keywords
 TOKEN_KEYWORD = "KEYWORD"
 # Variables
@@ -31,12 +33,20 @@ TOKEN_GT = "GREATER_THAN"
 TOKEN_LTE = "LESS_THAN_EQUAL"
 TOKEN_GTE = "GREATER_THAN_EQUAL"
 TOKEN_NOT_E = "NOT_EQUAL"
+# Delimiters
+TOKEN_NEWLINE = "NEWLINE"
+TOKEN_SEMICOLON = "SEMICOLON"
+TOKEN_LCURLY = "LCURLY"
+TOKEN_RCURLY = "RCURLY"
+# Strings
+TOKEN_STRING = "STRING"
 
 # All Keywords
 KEYWORDS = [
     "or",
     "if",
     "var",
+    "for",
     "and",
     "not",
     "else",
@@ -46,6 +56,7 @@ KEYWORDS = [
     "true",
     "false",
     "const",
+    "while",
     "Empty",
     "Number",
     "String",

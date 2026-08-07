@@ -58,53 +58,78 @@ class Parser:
 
     def atom(self):
         res = ParserResults()
-        token = self.current_token
+        tok = self.current_token
 
-        if token.type in (TOKEN_INT, TOKEN_FLOAT):
-            res.register(self.forward())
-            return res.success(NumberNode(token))
+        # Prefix ++x or --x
+        if tok.type in (TOKEN_INC, TOKEN_DEC):
+            op_tok = tok
+            res.register_forward()
+            self.forward()
 
-        elif token.type == TOKEN_KEYWORD and token.value == "none":
-            res.register(self.forward())
-            return res.success(NoneNode(token))
-
-        elif token.type == TOKEN_KEYWORD and token.value in ("true", "false"):
-            res.register(self.forward())
-            return res.success(BooleanNode(token))
-
-        elif token.type == TOKEN_IDENTIFIER:
-            res.register(self.forward())
-            return res.success(VariableAccessNode(token))
-
-        elif token.type == TOKEN_LPAREN:
-            res.register(self.forward())
-            expression = res.register(self.expression())
-            if res.error:
-                return res
-            if self.current_token.type == TOKEN_RPAREN:
-                res.register(self.forward())
-                return res.success(expression)
-            else:
+            if self.current_token.type != TOKEN_IDENTIFIER:
                 return res.failure(
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        "Expected ')' at end of expression.",
+                        "Expected variable identifier after '++' or '--'.",
                     )
                 )
 
-        elif token.matches(TOKEN_KEYWORD, "if"):
-            conditional = res.register(self.if_expression())
+            var_tok = self.current_token
+            res.register_forward()
+            self.forward()
+            return res.success(IncrementNode(var_tok, op_tok, is_postfix=False))
+
+        # Identifier: Var access OR Postfix x++ / x--
+        elif tok.type == TOKEN_IDENTIFIER:
+            var_tok = tok
+            res.register_forward()
+            self.forward()
+
+            if self.current_token.type in (TOKEN_INC, TOKEN_DEC):
+                op_tok = self.current_token
+                res.register_forward()
+                self.forward()
+                return res.success(IncrementNode(var_tok, op_tok, is_postfix=True))
+
+            return res.success(VariableAccessNode(var_tok))
+
+        elif tok.type in (TOKEN_INT, TOKEN_FLOAT):
+            res.register_forward()
+            self.forward()
+            return res.success(NumberNode(tok))
+
+        elif tok.type == TOKEN_STRING:
+            res.register_forward()
+            self.forward()
+            return res.success(StringNode(tok))
+
+        elif tok.type == TOKEN_LPAREN:
+            res.register_forward()
+            self.forward()
+            expr = res.register(self.expression())
             if res.error:
                 return res
+            if self.current_token.type == TOKEN_RPAREN:
+                res.register_forward()
+                self.forward()
+                return res.success(expr)
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected ')'",
+                )
+            )
 
-            return res.success(conditional)
+        elif tok.type == TOKEN_KEYWORD and tok.value == "if":
+            return self.if_expression()
 
         return res.failure(
             B_SharpSyntaxError(
-                token.pos_start,
-                token.pos_end,
-                "Expected number, boolean, variable, or '('",
+                tok.pos_start,
+                tok.pos_end,
+                f"Expected int, float, identifier, '+', '-', '(', or keyword, got '{tok}'",
             )
         )
 
@@ -118,7 +143,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected a conditional 'if' statement.",
+                    "Expected 'if'",
                 )
             )
 
@@ -126,28 +151,32 @@ class Parser:
         self.forward()
 
         condition = res.register(self.expression())
-
         if res.error:
             return res
 
-        if not self.current_token.matches(TOKEN_KEYWORD, "then"):
+        # Check for block '{' or keyword 'then'
+        if self.current_token.type == TOKEN_LCURLY:
+            expr = res.register(self.block())
+            if res.error:
+                return res
+            cases.append((condition, expr))
+        elif self.current_token.matches(TOKEN_KEYWORD, "then"):
+            res.register_forward()
+            self.forward()
+            expr = res.register(self.statement())
+            if res.error:
+                return res
+            cases.append((condition, expr))
+        else:
             return res.failure(
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected a conditional followup 'then'.",
+                    "Expected 'then' or '{' after if condition.",
                 )
             )
 
-        res.register_forward()
-        self.forward()
-
-        expression = res.register(self.expression())
-        if res.error:
-            return res
-
-        cases.append((condition, expression))
-
+        # Handle 'elif' clauses
         while self.current_token.matches(TOKEN_KEYWORD, "elif"):
             res.register_forward()
             self.forward()
@@ -156,30 +185,46 @@ class Parser:
             if res.error:
                 return res
 
-            if not self.current_token.matches(TOKEN_KEYWORD, "then"):
+            if self.current_token.type == TOKEN_LCURLY:
+                expr = res.register(self.block())
+                if res.error:
+                    return res
+                cases.append((condition, expr))
+            elif self.current_token.matches(TOKEN_KEYWORD, "then"):
+                res.register_forward()
+                self.forward()
+                expr = res.register(self.statement())
+                if res.error:
+                    return res
+                cases.append((condition, expr))
+            else:
                 return res.failure(
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        f"Expected 'THEN'",
+                        "Expected 'then' or '{' after elif condition.",
                     )
                 )
 
-            res.register_forward()
-            self.forward()
-
-            expr = res.register(self.expr())
-            if res.error:
-                return res
-            cases.append((condition, expr))
-
+        # Handle 'else' clause
         if self.current_token.matches(TOKEN_KEYWORD, "else"):
             res.register_forward()
             self.forward()
 
-            else_case = res.register(self.expr())
-            if res.error:
-                return res
+            if self.current_token.type == TOKEN_LCURLY:
+                else_case = res.register(self.block())
+                if res.error:
+                    return res
+            elif self.current_token.matches(TOKEN_KEYWORD, "then"):
+                res.register_forward()
+                self.forward()
+                else_case = res.register(self.statement())
+                if res.error:
+                    return res
+            else:
+                else_case = res.register(self.statement())
+                if res.error:
+                    return res
 
         return res.success(IfNode(cases, else_case))
 
@@ -372,19 +417,29 @@ class Parser:
             )
 
     def statement(self):
-        """Top-level parser entry for statements"""
         res = ParserResults()
 
-        if self.current_token.type == TOKEN_KEYWORD and self.current_token.value in (
-            "var",
-            "const",
-        ):
-            return self.var_decl()
+        if self.current_token.type == TOKEN_KEYWORD:
+            if self.current_token.value in ("var", "const"):
+                return self.var_decl()
+            elif self.current_token.value == "if":
+                return self.if_expression()
+            elif self.current_token.value == "while":
+                return self.while_expression()
+            elif self.current_token.value == "for":
+                return self.for_expression()
 
+        # Prefix ++i / --i
+        if self.current_token.type in (TOKEN_INC, TOKEN_DEC):
+            return self.increment_or_decrement()
+
+        # Check for identifier actions: assignment or postfix i++ / i--
         if self.current_token.type == TOKEN_IDENTIFIER and self.token_index + 1 < len(
             self.tokens
         ):
-            if self.tokens[self.token_index + 1].type == TOKEN_EQUAL:
+            next_tok = self.tokens[self.token_index + 1]
+
+            if next_tok.type == TOKEN_EQUAL:
                 name_tok = self.current_token
                 res.register(self.forward())
                 res.register(self.forward())
@@ -392,6 +447,13 @@ class Parser:
                 if res.error:
                     return res
                 return res.success(VariableReassignNode(name_tok, value_node))
+
+            elif next_tok.type in (TOKEN_INC, TOKEN_DEC):
+                var_tok = self.current_token
+                res.register(self.forward())
+                op_tok = self.current_token
+                res.register(self.forward())
+                return res.success(IncrementNode(var_tok, op_tok, is_postfix=True))
 
         return self.expression()
 
@@ -406,6 +468,256 @@ class Parser:
                 )
             )
         return res
+
+    def statements(self):
+        res = ParserResults()
+        statement_list = []
+
+        while self.current_token.type in (TOKEN_NEWLINE, TOKEN_SEMICOLON):
+            res.register_forward()
+            self.forward()
+
+        if self.current_token.type in (TOKEN_EOF, TOKEN_RCURLY):
+            return res.success(StatementsNode([]))
+
+        stmt = res.register(self.statement())
+        if res.error:
+            return res
+        statement_list.append(stmt)
+
+        while True:
+            newline_count = 0
+            while self.current_token.type in (TOKEN_NEWLINE, TOKEN_SEMICOLON):
+                res.register_forward()
+                self.forward()
+                newline_count += 1
+
+            if self.current_token.type in (TOKEN_EOF, TOKEN_RCURLY):
+                break
+
+            if newline_count == 0:
+                break
+
+            stmt = res.register(self.statement())
+            if res.error:
+                return res
+            statement_list.append(stmt)
+
+        return res.success(StatementsNode(statement_list))
+
+    def parser(self):
+        res = self.statements()
+        if not res.error and self.current_token.type != TOKEN_EOF:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Unexpected token or invalid syntax.",
+                )
+            )
+        return res
+
+    def block(self):
+        res = ParserResults()
+
+        if self.current_token.type != TOKEN_LCURLY:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '{'",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        statements_node = res.register(self.statements())
+        if res.error:
+            return res
+
+        if self.current_token.type != TOKEN_RCURLY:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '}'",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        return res.success(statements_node)
+
+    def increment_or_decrement(self):
+        res = ParserResults()
+
+        # Prefix ++i or --i
+        if self.current_token.type in (TOKEN_INC, TOKEN_DEC):
+            op_tok = self.current_token
+            res.register_forward()
+            self.forward()
+
+            if self.current_token.type != TOKEN_IDENTIFIER:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "Expected variable identifier after '++' or '--'.",
+                    )
+                )
+
+            var_tok = self.current_token
+            res.register_forward()
+            self.forward()
+            return res.success(IncrementNode(var_tok, op_tok, is_postfix=False))
+
+        return res.failure(
+            B_SharpSyntaxError(
+                self.current_token.pos_start,
+                self.current_token.pos_end,
+                "Invalid increment/decrement expression.",
+            )
+        )
+
+    def while_expression(self):
+        res = ParserResults()
+
+        if not self.current_token.matches(TOKEN_KEYWORD, "while"):
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected 'while'",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        condition = res.register(self.expression())
+        if res.error:
+            return res
+
+        if self.current_token.type == TOKEN_LCURLY:
+            body = res.register(self.block())
+        elif self.current_token.matches(TOKEN_KEYWORD, "then"):
+            res.register_forward()
+            self.forward()
+            body = res.register(self.statement())
+        else:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '{' or 'then' after while condition.",
+                )
+            )
+
+        if res.error:
+            return res
+
+        return res.success(WhileNode(condition, body))
+
+    def for_expression(self):
+        res = ParserResults()
+
+        if not self.current_token.matches(TOKEN_KEYWORD, "for"):
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected 'for'",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type != TOKEN_LPAREN:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '(' after 'for'.",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        # 1. Initializer: var i = 0 or i = 0
+        init_node = res.register(self.statement())
+        if res.error:
+            return res
+
+        if self.current_token.type != TOKEN_SEMICOLON:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected ';' after for loop initializer.",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        # 2. Condition: i < 10
+        condition_node = res.register(self.expression())
+        if res.error:
+            return res
+
+        if self.current_token.type != TOKEN_SEMICOLON:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected ';' after for loop condition.",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        # 3. Update expression: i++ / ++i / i = i + 1
+        update_node = res.register(self.statement())
+        if res.error:
+            return res
+
+        if self.current_token.type != TOKEN_RPAREN:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected ')' after for loop header.",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        # 4. Body: { ... } or then statement
+        if self.current_token.type == TOKEN_LCURLY:
+            body_node = res.register(self.block())
+        elif self.current_token.matches(TOKEN_KEYWORD, "then"):
+            res.register_forward()
+            self.forward()
+            body_node = res.register(self.statement())
+        else:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '{' or 'then' after for loop expression.",
+                )
+            )
+
+        if res.error:
+            return res
+
+        return res.success(ForNode(init_node, condition_node, update_node, body_node))
 
 
 class RunTimeResult:
@@ -631,3 +943,108 @@ class Interpreter:
             return res.success(else_value)
 
         return res.success(None)
+
+    def visit_StatementsNode(self, node, context):
+        res = RunTimeResult()
+        last_value = Empty().set_context(context)
+
+        for stmt in node.statement_nodes:
+            value = res.register(self.visit(stmt, context))
+            if res.error:
+                return res
+            last_value = value
+
+        return res.success(last_value)
+
+    def visit_StringNode(self, node, context):
+        return RunTimeResult().success(
+            String(node.token.value)
+            .set_context(context)
+            .set_pos(node.pos_start, node.pos_end)
+        )
+
+    def visit_IncrementNode(self, node, context):
+        res = RunTimeResult()
+
+        var_name = node.var_name_tok.value
+        val, error = context.variables.set_pos(node.pos_start, node.pos_end).get(
+            var_name
+        )
+
+        if error:
+            return res.failure(error)
+
+        if not isinstance(val, Number):
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    "Increment/decrement operations are only supported on Number types.",
+                )
+            )
+
+        old_num = val.value
+        new_num = old_num + 1 if node.op_tok.type == TOKEN_INC else old_num - 1
+        new_val = (
+            Number(new_num).set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
+
+        _, assign_err = context.variables.set_pos(node.pos_start, node.pos_end).assign(
+            var_name, new_val
+        )
+        if assign_err:
+            return res.failure(assign_err)
+
+        return res.success(Number(old_num if node.is_postfix else new_num))
+
+    def visit_WhileNode(self, node, context):
+        res = RunTimeResult()
+        elements = []
+
+        while True:
+            cond_val = res.register(self.visit(node.condition_node, context))
+            if res.error:
+                return res
+
+            if not cond_val.true_():
+                break
+
+            val = res.register(self.visit(node.body_node, context))
+            if res.error:
+                return res
+
+            elements.append(val)
+
+        return res.success(
+            elements[-1] if len(elements) > 0 else Empty().set_context(context)
+        )
+
+    def visit_ForNode(self, node, context):
+        res = RunTimeResult()
+        elements = []
+
+        res.register(self.visit(node.init_node, context))
+        if res.error:
+            return res
+
+        while True:
+            cond_val = res.register(self.visit(node.condition_node, context))
+            if res.error:
+                return res
+
+            if not cond_val.true_():
+                break
+
+            val = res.register(self.visit(node.body_node, context))
+            if res.error:
+                return res
+
+            elements.append(val)
+
+            res.register(self.visit(node.update_node, context))
+            if res.error:
+                return res
+
+        return res.success(
+            elements[-1] if len(elements) > 0 else Empty().set_context(context)
+        )

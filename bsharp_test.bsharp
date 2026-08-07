@@ -1,0 +1,12 @@
+var while_total = 0
+var count = 1
+
+while (count <= 5) {
+    while_total = while_total + count;
+    count ++
+}
+
+var inline_count = 0
+while inline_count < 3 then ++inline_count
+
+inline_count

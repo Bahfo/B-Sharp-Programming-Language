@@ -128,22 +128,95 @@ class Lexer:
 
         return Token(token_type, pos_start, self.pos)
 
+    def stringnize(self, quote_char):
+        # IDK why I called it like this
+        string_val = ""
+        pos_start = self.pos.copy()
+        escape_character = False
+        self.forward()
+
+        escape_characters = {
+            "n": "\n",
+            "t": "\t",
+            "r": "\r",
+            "\\": "\\",
+            '"': '"',
+            "'": "'",
+        }
+
+        while self.current_char is not None and (
+            self.current_char != quote_char or escape_character
+        ):
+            if escape_character:
+                string_val += escape_characters.get(
+                    self.current_char, self.current_char
+                )
+                escape_character = False
+            else:
+                if self.current_char == "\\":
+                    escape_character = True
+                else:
+                    string_val += self.current_char
+            self.forward()
+
+        if self.current_char != quote_char:
+            return None, B_SharpSyntaxError(
+                pos_start,
+                self.pos,
+                f"Unterminated string literal, expected closing {quote_char}.",
+            )
+
+        self.forward()
+        return Token(TOKEN_STRING, string_val, pos_start, self.pos), None
+
     def tokenize(self):
         tokens = []
 
         while self.current_char != None:
             if self.current_char in " \t":
                 self.forward()
+            elif self.current_char in ("\n", ";"):
+                token_type = (
+                    TOKEN_NEWLINE if self.current_char == "\n" else TOKEN_SEMICOLON
+                )
+                tokens.append(Token(token_type, pos_start=self.pos))
+                self.forward()
+            elif self.current_char == "\r":
+                self.forward()  # Skip carriage return
+            elif self.current_char == "{":
+                tokens.append(Token(TOKEN_LCURLY, pos_start=self.pos))
+                self.forward()
+            elif self.current_char == "}":
+                tokens.append(Token(TOKEN_RCURLY, pos_start=self.pos))
+                self.forward()
             elif self.current_char in LETTERS:
                 tokens.append(self.identifiers())
             elif self.current_char in DIGITS:
                 tokens.append(self.numberize())
             elif self.current_char == "+":
-                tokens.append(Token(TOKEN_PLUS, pos_start=self.pos))
+                pos_start = self.pos.copy()
                 self.forward()
+                if self.current_char == "+":
+                    self.forward()
+                    tokens.append(
+                        Token(TOKEN_INC, pos_start=pos_start, pos_end=self.pos)
+                    )
+                else:
+                    tokens.append(
+                        Token(TOKEN_PLUS, pos_start=pos_start, pos_end=self.pos)
+                    )
             elif self.current_char == "-":
-                tokens.append(Token(TOKEN_MINUS, pos_start=self.pos))
+                pos_start = self.pos.copy()
                 self.forward()
+                if self.current_char == "-":
+                    self.forward()
+                    tokens.append(
+                        Token(TOKEN_DEC, pos_start=pos_start, pos_end=self.pos)
+                    )
+                else:
+                    tokens.append(
+                        Token(TOKEN_MINUS, pos_start=pos_start, pos_end=self.pos)
+                    )
             elif self.current_char == "*":
                 tokens.append(Token(TOKEN_MUL, pos_start=self.pos))
                 self.forward()
@@ -177,6 +250,11 @@ class Lexer:
                 tokens.append(self.make_token_greater_than())
             elif self.current_char == "<":
                 tokens.append(self.make_token_less_than())
+            elif self.current_char in ('"', "'"):
+                token, error = self.stringnize(self.current_char)
+                if error:
+                    return [], error
+                tokens.append(token)
             else:
                 pos_start = self.pos.copy()
                 char = self.current_char

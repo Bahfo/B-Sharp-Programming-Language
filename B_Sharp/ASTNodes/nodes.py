@@ -136,3 +136,70 @@ class IfNode:
 
         self.pos_start = self.cases[0][0].pos_start
         self.pos_end = (self.else_case or self.cases[len(self.cases) - 1][0]).pos_end
+
+
+class StatementsNode:
+    def __init__(self, statement_nodes):
+        self.statement_nodes = statement_nodes
+        if statement_nodes:
+            self.pos_start = statement_nodes[0].pos_start
+            self.pos_end = statement_nodes[-1].pos_end
+        else:
+            self.pos_start = None
+            self.pos_end = None
+
+    def __repr__(self):
+        return f"Statements ({self.statement_nodes})"
+
+
+class StringNode:
+    def __init__(self, token):
+        self.token = token
+        self.pos_start = token.pos_start
+        self.pos_end = token.pos_end
+
+    def __repr__(self):
+        return f"{self.token}"
+
+
+class IncrementNode:
+    def __init__(self, var_name_tok, op_tok, is_postfix=True):
+        self.var_name_tok = var_name_tok
+        self.op_tok = op_tok
+        self.is_postfix = is_postfix
+
+        self.pos_start = var_name_tok.pos_start if is_postfix else op_tok.pos_start
+        self.pos_end = op_tok.pos_end if is_postfix else var_name_tok.pos_end
+
+    def __repr__(self):
+        return (
+            f"{self.var_name_tok.value}{self.op_tok.value}"
+            if self.is_postfix
+            else f"{self.op_tok.value}{self.var_name_tok.value}"
+        )
+
+
+class WhileNode:
+    def __init__(self, condition_node, body_node):
+        self.condition_node = condition_node
+        self.body_node = body_node
+
+        self.pos_start = condition_node.pos_start
+        self.pos_end = body_node.pos_end
+
+    def __repr__(self):
+        return f"while ({self.condition_node}) {self.body_node}"
+
+
+class ForNode:
+    def __init__(self, init_node, condition_node, update_node, body_node):
+        self.init_node = init_node
+        self.condition_node = condition_node
+        self.update_node = update_node
+        self.body_node = body_node
+
+        self.pos_start = init_node.pos_start
+        self.pos_end = body_node.pos_end
+
+    def __repr__(self):
+        return f"for ({self.init_node}; {self.condition_node}; {self.update_node}) {self.body_node}"
