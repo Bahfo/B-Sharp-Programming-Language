@@ -62,23 +62,7 @@ class Parser:
 
         # Prefix ++x or --x
         if tok.type in (TOKEN_INC, TOKEN_DEC):
-            op_tok = tok
-            res.register_forward()
-            self.forward()
-
-            if self.current_token.type != TOKEN_IDENTIFIER:
-                return res.failure(
-                    B_SharpSyntaxError(
-                        self.current_token.pos_start,
-                        self.current_token.pos_end,
-                        "Expected variable identifier after '++' or '--'.",
-                    )
-                )
-
-            var_tok = self.current_token
-            res.register_forward()
-            self.forward()
-            return res.success(IncrementNode(var_tok, op_tok, is_postfix=False))
+            return self.increment_or_decrement()
 
         # Identifier: Var access OR Postfix x++ / x--
         elif tok.type == TOKEN_IDENTIFIER:
@@ -121,6 +105,16 @@ class Parser:
                     "Expected ')'",
                 )
             )
+
+        elif tok.type == TOKEN_KEYWORD and tok.value in ("true", "false"):
+            res.register_forward()
+            self.forward()
+            return res.success(BooleanNode(tok))
+
+        elif tok.type == TOKEN_KEYWORD and tok.value == "none":
+            res.register_forward()
+            self.forward()
+            return res.success(NoneNode(tok))
 
         elif tok.type == TOKEN_KEYWORD and tok.value == "if":
             return self.if_expression()
@@ -265,7 +259,7 @@ class Parser:
         return self.power()
 
     def factor(self):
-        return self.binary_operation(self.unary, (TOKEN_MUL, TOKEN_DIV))
+        return self.binary_operation(self.unary, (TOKEN_MUL, TOKEN_DIV, TOKEN_IDIV))
 
     def term(self):
         return self.binary_operation(self.factor, (TOKEN_PLUS, TOKEN_MINUS))
@@ -276,11 +270,14 @@ class Parser:
             (TOKEN_EE, TOKEN_NOT_E, TOKEN_LT, TOKEN_GT, TOKEN_LTE, TOKEN_GTE),
         )
 
+    def and_expression(self):
+        return self.binary_operation(self.comparison, ("and",))
+
+    def or_expression(self):
+        return self.binary_operation(self.and_expression, ("or",))
+
     def expression(self):
-        return self.binary_operation(
-            self.comparison,
-            (TOKEN_KEYWORD,),
-        )
+        return self.or_expression()
 
     def binary_operation(self, function, operations):
         res = ParserResults()
@@ -288,12 +285,10 @@ class Parser:
         if res.error:
             return res
 
-        while self.current_token.type in operations:
-            if (
-                self.current_token.type == TOKEN_KEYWORD
-                and self.current_token.value not in ("and", "or")
-            ):
-                break
+        while self.current_token.type in operations or (
+            self.current_token.type == TOKEN_KEYWORD
+            and self.current_token.value in operations
+        ):
             op_token = self.current_token
             res.register(self.forward())
             right = res.register(function())
@@ -517,6 +512,7 @@ class Parser:
                 )
             )
 
+        lcurly_pos = self.current_token.pos_start
         res.register_forward()
         self.forward()
 
@@ -532,6 +528,11 @@ class Parser:
                     "Expected '}'",
                 )
             )
+
+        rcurly_pos = self.current_token.pos_end
+        if not statements_node.statement_nodes:
+            statements_node.pos_start = lcurly_pos
+            statements_node.pos_end = rcurly_pos
 
         res.register_forward()
         self.forward()
@@ -778,6 +779,8 @@ class Interpreter:
             result, error = left.multiplication(right)
         elif node.op_token.type == TOKEN_DIV:
             result, error = left.division(right)
+        elif node.op_token.type == TOKEN_IDIV:
+            result, error = left.integer_division(right)
         elif node.op_token.type == TOKEN_POWER:
             result, error = left.power(right)
         elif node.op_token.type == TOKEN_EE:
@@ -796,6 +799,12 @@ class Interpreter:
             result, error = left.and_(right)
         elif node.op_token.type == TOKEN_KEYWORD and node.op_token.value == "or":
             result, error = left.or_(right)
+        else:
+            result, error = None, RunTimeError(
+                node.op_token.pos_start,
+                node.op_token.pos_end,
+                f"Unknown binary operator '{node.op_token.value or node.op_token.type}'.",
+            )
 
         if error:
             return res.failure(error)
@@ -819,6 +828,25 @@ class Interpreter:
                 node.op_token.pos_start,
                 node.op_token.pos_end,
                 f"Unknown unary operator '{node.op_token.value}'.",
+            )
+
+        if error:
+            return res.failure(error)
+        return res.success(result.set_pos(node.pos_start, node.pos_end))
+
+    def visit_BinaryNegationNode(self, node, context):
+        res = RunTimeResult()
+        operand = res.register(self.visit(node.node, context))
+        if res.error:
+            return res
+
+        if node.op_token.type == TOKEN_MINUS:
+            result, error = operand.multiplication(Number(-1))
+        else:
+            result, error = None, RunTimeError(
+                node.op_token.pos_start,
+                node.op_token.pos_end,
+                f"Unknown binary negation operator '{node.op_token.value}'.",
             )
 
         if error:
@@ -918,19 +946,23 @@ class Interpreter:
                 return res
 
             if condition_value.true_():
-                expression_value = res.register(self.visit(expression, context))
+                branch_context = Context("<if>", context, node.pos_start)
+                expression_value = res.register(self.visit(expression, branch_context))
                 if res.error:
                     return res
                 return res.success(expression_value)
 
         if node.else_case:
-            else_value = res.register(self.visit(node.else_case, context))
+            branch_context = Context("<if>", context, node.pos_start)
+            else_value = res.register(self.visit(node.else_case, branch_context))
             if res.error:
                 return res
 
             return res.success(else_value)
 
-        return res.success(None)
+        return res.success(
+            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
 
     def visit_StatementsNode(self, node, context):
         res = RunTimeResult()
@@ -983,7 +1015,11 @@ class Interpreter:
         if assign_err:
             return res.failure(assign_err)
 
-        return res.success(Number(old_num if node.is_postfix else new_num))
+        return res.success(
+            Number(old_num if node.is_postfix else new_num)
+            .set_context(context)
+            .set_pos(node.pos_start, node.pos_end)
+        )
 
     def visit_WhileNode(self, node, context):
         res = RunTimeResult()
@@ -997,7 +1033,8 @@ class Interpreter:
             if not cond_val.true_():
                 break
 
-            val = res.register(self.visit(node.body_node, context))
+            body_context = Context("<while>", context, node.pos_start)
+            val = res.register(self.visit(node.body_node, body_context))
             if res.error:
                 return res
 
@@ -1011,25 +1048,27 @@ class Interpreter:
         res = RunTimeResult()
         elements = []
 
-        res.register(self.visit(node.init_node, context))
+        loop_context = Context("<for>", context, node.pos_start)
+        res.register(self.visit(node.init_node, loop_context))
         if res.error:
             return res
 
         while True:
-            cond_val = res.register(self.visit(node.condition_node, context))
+            cond_val = res.register(self.visit(node.condition_node, loop_context))
             if res.error:
                 return res
 
             if not cond_val.true_():
                 break
 
-            val = res.register(self.visit(node.body_node, context))
+            body_context = Context("<for>", loop_context, node.pos_start)
+            val = res.register(self.visit(node.body_node, body_context))
             if res.error:
                 return res
 
             elements.append(val)
 
-            res.register(self.visit(node.update_node, context))
+            res.register(self.visit(node.update_node, loop_context))
             if res.error:
                 return res
 

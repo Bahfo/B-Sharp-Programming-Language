@@ -7,7 +7,7 @@ from B_Sharp.ASTNodes.nodes import (
     VariableReassignNode,
 )
 
-global_context = Context("<program>")
+global_context = Context("<program>", redefine=True)
 
 while True:
     text = input("B_Sharp >>> ")

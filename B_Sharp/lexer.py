@@ -27,7 +27,7 @@ class Token:
         return self.type == type_ and (value is None or self.value == value)
 
     def __repr__(self):
-        if self.value:
+        if self.value is not None:
             return f"{self.type} : {self.value}"
         return f"{self.type}"
 
@@ -55,7 +55,11 @@ class Lexer:
         while self.current_char != None and self.current_char in DIGITS + ".":
             if self.current_char == ".":
                 if dot_count == 1:
-                    break
+                    return None, DoubleFloatingAssignedError(
+                        pos_start,
+                        self.pos,
+                        "A number literal cannot contain more than one decimal point.",
+                    )
                 dot_count += 1
                 number_str += "."
             else:
@@ -63,9 +67,9 @@ class Lexer:
             self.forward()
 
         if dot_count == 0:
-            return Token(TOKEN_INT, int(number_str), pos_start, self.pos)
+            return Token(TOKEN_INT, int(number_str), pos_start, self.pos), None
         else:
-            return Token(TOKEN_FLOAT, float(number_str), pos_start, self.pos)
+            return Token(TOKEN_FLOAT, float(number_str), pos_start, self.pos), None
 
     def identifiers(self):
         pos_start = self.pos.copy()
@@ -88,7 +92,6 @@ class Lexer:
             self.forward()
             return Token(TOKEN_NOT_E, pos_start, self.pos), None
 
-        self.forward()
         return None, B_SharpSyntaxError(
             pos_start,
             self.pos,
@@ -148,9 +151,15 @@ class Lexer:
             self.current_char != quote_char or escape_character
         ):
             if escape_character:
-                string_val += escape_characters.get(
-                    self.current_char, self.current_char
-                )
+                char = self.current_char
+                if char in escape_characters:
+                    string_val += escape_characters[char]
+                else:
+                    return None, B_SharpSyntaxError(
+                        pos_start,
+                        self.pos,
+                        f"Invalid escape sequence '\\{char}'.",
+                    )
                 escape_character = False
             else:
                 if self.current_char == "\\":
@@ -192,7 +201,10 @@ class Lexer:
             elif self.current_char in LETTERS:
                 tokens.append(self.identifiers())
             elif self.current_char in DIGITS:
-                tokens.append(self.numberize())
+                token, error = self.numberize()
+                if error:
+                    return [], error
+                tokens.append(token)
             elif self.current_char == "+":
                 pos_start = self.pos.copy()
                 self.forward()
@@ -218,11 +230,27 @@ class Lexer:
                         Token(TOKEN_MINUS, pos_start=pos_start, pos_end=self.pos)
                     )
             elif self.current_char == "*":
-                tokens.append(Token(TOKEN_MUL, pos_start=self.pos))
+                pos_start = self.pos.copy()
                 self.forward()
+                if self.current_char == "*":
+                    return [], B_SharpSyntaxError(
+                        pos_start,
+                        self.pos,
+                        "The '**' operator is not defined.",
+                    )
+                tokens.append(Token(TOKEN_MUL, pos_start=pos_start, pos_end=self.pos))
             elif self.current_char == "/":
-                tokens.append(Token(TOKEN_DIV, pos_start=self.pos))
+                pos_start = self.pos.copy()
                 self.forward()
+                if self.current_char == "/":
+                    self.forward()
+                    tokens.append(
+                        Token(TOKEN_IDIV, pos_start=pos_start, pos_end=self.pos)
+                    )
+                else:
+                    tokens.append(
+                        Token(TOKEN_DIV, pos_start=pos_start, pos_end=self.pos)
+                    )
             elif self.current_char == "(":
                 tokens.append(Token(TOKEN_LPAREN, pos_start=self.pos))
                 self.forward()

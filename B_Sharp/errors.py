@@ -7,6 +7,8 @@ class Error:
 
     def as_string(self):
         result = f"{self.error_name} :\n{self.details}\n"
+        if self.pos_start is None:
+            return result
         result += f"File {self.pos_start.file_name}, Ln: {self.pos_start.line + 1}"
         return result
 
@@ -44,3 +46,8 @@ class EmptinessUnmatchedError(Error):
 class ComparisonError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Comparison Syntax Error.", details)
+
+
+class DoubleFloatingAssignedError(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, "Double Floating Assigned Error.", details)

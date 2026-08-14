@@ -135,18 +135,24 @@ class IfNode:
         self.else_case = else_case
 
         self.pos_start = self.cases[0][0].pos_start
-        self.pos_end = (self.else_case or self.cases[len(self.cases) - 1][1]).pos_end
+        last_case = self.cases[len(self.cases) - 1][1]
+        if self.else_case is not None and self.else_case.pos_end is not None:
+            self.pos_end = self.else_case.pos_end
+        elif last_case.pos_end is not None:
+            self.pos_end = last_case.pos_end
+        else:
+            self.pos_end = self.pos_start
 
 
 class StatementsNode:
-    def __init__(self, statement_nodes):
+    def __init__(self, statement_nodes, pos_start=None, pos_end=None):
         self.statement_nodes = statement_nodes
         if statement_nodes:
             self.pos_start = statement_nodes[0].pos_start
             self.pos_end = statement_nodes[-1].pos_end
         else:
-            self.pos_start = None
-            self.pos_end = None
+            self.pos_start = pos_start
+            self.pos_end = pos_end
 
     def __repr__(self):
         return f"Statements ({self.statement_nodes})"

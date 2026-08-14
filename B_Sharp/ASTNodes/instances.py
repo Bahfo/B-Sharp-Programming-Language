@@ -106,10 +106,33 @@ class Number:
                 "Unexpected type for division operation.",
             )
 
+    def integer_division(self, other):
+        if isinstance(other, Number):
+            if other.value == 0:
+                return None, RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    "Unallowed division by zero.",
+                )
+            return Number(int(self.value // other.value)), None
+
+        else:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                "Unexpected type for division operation.",
+            )
+
     def power(self, power_factor):
         if isinstance(power_factor, Number):
             try:
                 result = self.value ** power_factor.value
+            except ZeroDivisionError:
+                return None, RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    "Unallowed division by zero in exponentiation.",
+                )
             except Exception:
                 return None, RunTimeError(
                     self.pos_start,
@@ -334,6 +357,13 @@ class Boolean:
             "Unexpected type for division operation.",
         )
 
+    def integer_division(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for division operation.",
+        )
+
     def power(self, other):
         return None, RunTimeError(
             self.pos_start,
@@ -382,11 +412,45 @@ class String:
 
     def multiplication(self, other):
         if isinstance(other, Number) and isinstance(other.value, int):
+            if other.value < 0:
+                return None, RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    "String multiplication requires a non-negative integer power factor.",
+                )
             return String(self.value * other.value), None
         return None, RunTimeError(
             self.pos_start,
             self.pos_end,
             "String multiplication requires an integer power factor.",
+        )
+
+    def subtraction(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for string subtraction.",
+        )
+
+    def division(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for division operation.",
+        )
+
+    def integer_division(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for division operation.",
+        )
+
+    def power(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for string power operation.",
         )
 
     def is_equal(self, other):
@@ -398,6 +462,33 @@ class String:
         if isinstance(other, String):
             return Boolean(self.value != other.value), None
         return Boolean(True), None
+
+    def less_than(self, other):
+        if isinstance(other, String):
+            return Boolean(self.value < other.value), None
+        return Boolean(False), None
+
+    def greater_than(self, other):
+        if isinstance(other, String):
+            return Boolean(self.value > other.value), None
+        return Boolean(False), None
+
+    def less_than_equal(self, other):
+        if isinstance(other, String):
+            return Boolean(self.value <= other.value), None
+        return Boolean(False), None
+
+    def greater_than_equal(self, other):
+        if isinstance(other, String):
+            return Boolean(self.value >= other.value), None
+        return Boolean(False), None
+
+    def not_(self):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'not' operation.",
+        )
 
     def true_(self):
         return len(self.value) > 0
@@ -459,6 +550,69 @@ class Empty:
     def true_(self):
         return False
 
+    def addition(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for addition operation.",
+        )
+
+    def subtraction(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for subtraction operation.",
+        )
+
+    def multiplication(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for multiplication operation.",
+        )
+
+    def division(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for division operation.",
+        )
+
+    def integer_division(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for division operation.",
+        )
+
+    def power(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for power operation.",
+        )
+
+    def and_(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'and' operation.",
+        )
+
+    def or_(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'or' operation.",
+        )
+
+    def not_(self):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'not' operation.",
+        )
+
     def is_equal(self, other):
         if isinstance(other, Empty):
             return Boolean(True), None
@@ -501,11 +655,12 @@ class Context:
     Runtime scope holding the variables table that persists across statements.
     """
 
-    def __init__(self, display_name, parent=None, parent_entry_pos=None):
+    def __init__(self, display_name, parent=None, parent_entry_pos=None, redefine=False):
         self.display_name = display_name
         self.parent = parent
         self.parent_entry_pos = parent_entry_pos
         self.variables = EnvironmentVariable(parent.variables if parent else None)
+        self.variables.allow_redefine = redefine
 
 
 class EnvironmentVariable:
@@ -535,6 +690,7 @@ class EnvironmentVariable:
         self.pos_end = None
         self.variables = {}
         self.parent = parent
+        self.allow_redefine = False
         self.set_pos()
 
     def set_pos(self, pos_start=None, pos_end=None):
@@ -547,6 +703,20 @@ class EnvironmentVariable:
 
         # 1. Check for redefinition
         if name in self.variables:
+            if self.allow_redefine:
+                entry = self.variables[name]
+                if entry["is_const"]:
+                    return None, ModificationError(
+                        self.pos_start,
+                        self.pos_end,
+                        f"Cannot change value of '{name}' of type const.",
+                    )
+                type_error = self._type_mismatch_error(entry["type"], value)
+                if type_error:
+                    return None, type_error
+                entry["value"] = value
+                return value, None
+
             return None, AssignmentError(
                 self.pos_start,
                 self.pos_end,
@@ -566,16 +736,19 @@ class EnvironmentVariable:
         }
         return value, None
 
-    def assign(self, name, value):
+    def assign(self, name, value, pos_start=None, pos_end=None):
         """Updates an existing variable value."""
+
+        if pos_start is None:
+            pos_start, pos_end = self.pos_start, self.pos_end
 
         # Check existence
         if name not in self.variables:
             if self.parent is not None:
-                return self.parent.assign(name, value)
+                return self.parent.assign(name, value, pos_start, pos_end)
             return None, AssignmentError(
-                self.pos_start,
-                self.pos_end,
+                pos_start,
+                pos_end,
                 f"Attempting to access an unassigned variable '{name}'.",
             )
 
@@ -584,13 +757,13 @@ class EnvironmentVariable:
         # Check immutability (const)
         if entry["is_const"]:
             return None, ModificationError(
-                self.pos_start,
-                self.pos_end,
+                pos_start,
+                pos_end,
                 f"Cannot change value of '{name}' of type const.",
             )
 
         # Check type compatibility
-        type_error = self._type_mismatch_error(entry["type"], value)
+        type_error = self._type_mismatch_error(entry["type"], value, pos_start, pos_end)
         if type_error:
             return None, type_error
 
@@ -598,20 +771,28 @@ class EnvironmentVariable:
         entry["value"] = value
         return value, None
 
-    def get(self, name):
+    def get(self, name, pos_start=None, pos_end=None):
         """Fetches variable value by name."""
+
+        if pos_start is None:
+            pos_start, pos_end = self.pos_start, self.pos_end
+
         if name not in self.variables:
             if self.parent is not None:
-                return self.parent.get(name)
+                return self.parent.get(name, pos_start, pos_end)
             return None, AssignmentError(
-                self.pos_start,
-                self.pos_end,
+                pos_start,
+                pos_end,
                 f"'{name}' is not defined.",
             )
         return self.variables[name]["value"], None
 
-    def _type_mismatch_error(self, data_type, value):
+    def _type_mismatch_error(self, data_type, value, pos_start=None, pos_end=None):
         """Validates value type against declared variable type."""
+
+        if pos_start is None:
+            pos_start, pos_end = self.pos_start, self.pos_end
+
         if data_type is None:  # Weakly typed variable will accepts any value
             return None
 
@@ -624,8 +805,8 @@ class EnvironmentVariable:
                 return None
             val_type_str = type(value).__name__
             return AssignmentError(
-                self.pos_start,
-                self.pos_end,
+                pos_start,
+                pos_end,
                 f"Cannot assign value of type {val_type_str} to a variable declared with Empty.",
             )
 
@@ -635,7 +816,7 @@ class EnvironmentVariable:
 
         val_type_str = type(value).__name__
         return AssignmentError(
-            self.pos_start,
-            self.pos_end,
+            pos_start,
+            pos_end,
             f"Cannot assign value of type {val_type_str} to a variable declared with {data_type.__name__}.",
         )
