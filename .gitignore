@@ -1,2 +1,4 @@
 __pycache__/
 .pyc
+Plugins/vscode/bsharp-language-support/.vscode
+Plugins/vscode/bsharp-language-support/package.json

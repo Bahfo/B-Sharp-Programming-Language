@@ -1,0 +1,132 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "B_Sharp",
+  "scopeName": "source.bsharp",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#constants" },
+    { "include": "#operators" },
+    { "include": "#delimiters" },
+    { "include": "#functions" },
+    { "include": "#numbers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.bsharp",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.bsharp",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.bsharp",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.bsharp",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.bsharp",
+          "match": "\\b(if|elif|else|then|for|while)\\b"
+        },
+        {
+          "name": "keyword.operator.logical.bsharp",
+          "match": "\\b(and|or|not)\\b"
+        },
+        {
+          "name": "storage.type.variable.bsharp",
+          "match": "\\b(var|const)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.bsharp",
+          "match": "\\b(Number|String|Boolean|Empty)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.bsharp",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.bsharp",
+          "match": "\\b(none)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.bsharp",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.assignment.bsharp",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.arithmetic.bsharp",
+          "match": "\\+\\+|--|\\*\\*|//|\\+|\\-|\\*|/"
+        }
+      ]
+    },
+    "delimiters": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.delimiter.bsharp",
+          "match": ",|;|:"
+        },
+        {
+          "name": "punctuation.section.parens.bsharp",
+          "match": "\\(|\\)"
+        },
+        {
+          "name": "punctuation.section.braces.bsharp",
+          "match": "\\{|\\}"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+          "captures": {
+            "1": { "name": "entity.name.function.bsharp" }
+          }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.bsharp",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.bsharp",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    }
+  }
+}
