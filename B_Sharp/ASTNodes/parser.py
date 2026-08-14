@@ -457,18 +457,6 @@ class Parser:
 
         return self.expression()
 
-    def parser(self):
-        res = self.statement()
-        if not res.error and self.current_token.type != TOKEN_EOF:
-            return res.failure(
-                B_SharpSyntaxError(
-                    self.current_token.pos_start,
-                    self.current_token.pos_end,
-                    "Unexpected token or invalid syntax.",
-                )
-            )
-        return res
-
     def statements(self):
         res = ParserResults()
         statement_list = []

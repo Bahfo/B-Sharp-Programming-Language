@@ -259,7 +259,7 @@ class Lexer:
                 pos_start = self.pos.copy()
                 char = self.current_char
                 self.forward()
-                return [], IllegalCharacaterError(pos_start, self.pos, "'" + char + "'")
+                return [], IllegalCharacterError(pos_start, self.pos, "'" + char + "'")
 
         tokens.append(Token(TOKEN_EOF, pos_start=self.pos))
         return tokens, None

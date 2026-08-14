@@ -108,7 +108,21 @@ class Number:
 
     def power(self, power_factor):
         if isinstance(power_factor, Number):
-            return Number(self.value**power_factor.value), None
+            try:
+                result = self.value ** power_factor.value
+            except Exception:
+                return None, RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    "Complex numbers are not yet supported.",
+                )
+            if isinstance(result, complex):
+                return None, RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    "Complex numbers are not yet supported.",
+                )
+            return Number(result), None
 
         else:
             return None, RunTimeError(
@@ -491,7 +505,7 @@ class Context:
         self.display_name = display_name
         self.parent = parent
         self.parent_entry_pos = parent_entry_pos
-        self.variables = EnvironmentVariable()
+        self.variables = EnvironmentVariable(parent.variables if parent else None)
 
 
 class EnvironmentVariable:
@@ -516,10 +530,11 @@ class EnvironmentVariable:
     to reassign or change value.
     """
 
-    def __init__(self):
+    def __init__(self, parent=None):
         self.pos_start = None
         self.pos_end = None
         self.variables = {}
+        self.parent = parent
         self.set_pos()
 
     def set_pos(self, pos_start=None, pos_end=None):
@@ -556,6 +571,8 @@ class EnvironmentVariable:
 
         # Check existence
         if name not in self.variables:
+            if self.parent is not None:
+                return self.parent.assign(name, value)
             return None, AssignmentError(
                 self.pos_start,
                 self.pos_end,
@@ -584,6 +601,8 @@ class EnvironmentVariable:
     def get(self, name):
         """Fetches variable value by name."""
         if name not in self.variables:
+            if self.parent is not None:
+                return self.parent.get(name)
             return None, AssignmentError(
                 self.pos_start,
                 self.pos_end,

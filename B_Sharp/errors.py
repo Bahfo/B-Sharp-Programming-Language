@@ -11,7 +11,7 @@ class Error:
         return result
 
 
-class IllegalCharacaterError(Error):
+class IllegalCharacterError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Illegal Character", details)
 
@@ -36,7 +36,7 @@ class ModificationError(Error):
         super().__init__(pos_start, pos_end, "Uncaught Modification Error.", details)
 
 
-class EmptynessUnmatchedError(Error):
+class EmptinessUnmatchedError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Assigning to Empty Error.", details)
 
