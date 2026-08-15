@@ -1,4 +1,9 @@
 __pycache__/
 .pyc
+Docs/
 Plugins/vscode/bsharp-language-support/.vscode
 Plugins/vscode/bsharp-language-support/package.json
+*.py[cod]
+*.pyo
+*.pyd
+/.ruff_cache

@@ -224,7 +224,7 @@ class Parser:
 
     def power(self):
         res = ParserResults()
-        left = res.register(self.atom())
+        left = res.register(self.call())
         if res.error:
             return res
 
@@ -417,6 +417,10 @@ class Parser:
         if self.current_token.type == TOKEN_KEYWORD:
             if self.current_token.value in ("var", "const"):
                 return self.var_decl()
+            elif self.current_token.value == "fn":
+                return self.fn_def()
+            elif self.current_token.value == "return":
+                return self.return_statement()
             elif self.current_token.value == "if":
                 return self.if_expression()
             elif self.current_token.value == "while":
@@ -708,21 +712,295 @@ class Parser:
 
         return res.success(ForNode(init_node, condition_node, update_node, body_node))
 
+    def call(self):
+        res = ParserResults()
+        atom = res.register(self.atom())
+        if res.error:
+            return res
+
+        if self.current_token.type == TOKEN_LPAREN:
+            return self.finish_call(atom)
+
+        return res.success(atom)
+
+    def finish_call(self, node_to_call):
+        res = ParserResults()
+        arg_nodes = []
+
+        res.register_forward()
+        self.forward()  # skip '('
+
+        if self.current_token.type == TOKEN_RPAREN:
+            rparen_pos = self.current_token.pos_end
+            res.register_forward()
+            self.forward()  # skip ')'
+            return res.success(CallNode(node_to_call, arg_nodes, pos_end=rparen_pos))
+
+        arg_nodes.append(res.register(self.expression()))
+        if res.error:
+            return res
+
+        while self.current_token.type == TOKEN_COMMA:
+            res.register_forward()
+            self.forward()
+
+            arg_nodes.append(res.register(self.expression()))
+            if res.error:
+                return res
+
+        if self.current_token.type != TOKEN_RPAREN:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected ',' or ')'",
+                )
+            )
+
+        rparen_pos = self.current_token.pos_end
+        res.register_forward()
+        self.forward()
+        return res.success(CallNode(node_to_call, arg_nodes, pos_end=rparen_pos))
+
+    def fn_def(self):
+        res = ParserResults()
+
+        if not self.current_token.matches(TOKEN_KEYWORD, "fn"):
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected 'fn'",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        # Name casting rule: anonymous functions are invalid
+        if self.current_token.type != TOKEN_IDENTIFIER:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected function name identifier after 'fn'. Anonymous functions are not allowed.",
+                )
+            )
+
+        var_name_tok = self.current_token
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type != TOKEN_LPAREN:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '(' after function name.",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+        arg_nodes = []
+
+        if self.current_token.type == TOKEN_RPAREN:
+            res.register_forward()
+            self.forward()
+        else:
+            if self.current_token.type != TOKEN_IDENTIFIER:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "Expected parameter name identifier.",
+                    )
+                )
+
+            param_name = self.current_token
+            res.register_forward()
+            self.forward()
+
+            param_type = None
+            if self.current_token.type == TOKEN_COLON:
+                res.register_forward()
+                self.forward()
+                if self.current_token.type in (TOKEN_KEYWORD, TOKEN_IDENTIFIER):
+                    param_type = self.current_token
+                    res.register_forward()
+                    self.forward()
+                    if TYPE_MAP.get(param_type.value.lower()) is None:
+                        return res.failure(
+                            B_SharpSyntaxError(
+                                param_type.pos_start,
+                                param_type.pos_end,
+                                f"Unknown data type '{param_type.value}'.",
+                            )
+                        )
+                else:
+                    return res.failure(
+                        B_SharpSyntaxError(
+                            self.current_token.pos_start,
+                            self.current_token.pos_end,
+                            "Expected type identifier after ':'.",
+                        )
+                    )
+
+            arg_nodes.append((param_name, param_type))
+
+            while self.current_token.type == TOKEN_COMMA:
+                res.register_forward()
+                self.forward()
+
+                if self.current_token.type != TOKEN_IDENTIFIER:
+                    return res.failure(
+                        B_SharpSyntaxError(
+                            self.current_token.pos_start,
+                            self.current_token.pos_end,
+                            "Expected parameter name identifier after ','.",
+                        )
+                    )
+
+                param_name = self.current_token
+                res.register_forward()
+                self.forward()
+
+                param_type = None
+                if self.current_token.type == TOKEN_COLON:
+                    res.register_forward()
+                    self.forward()
+                    if self.current_token.type in (TOKEN_KEYWORD, TOKEN_IDENTIFIER):
+                        param_type = self.current_token
+                        res.register_forward()
+                        self.forward()
+                        if TYPE_MAP.get(param_type.value.lower()) is None:
+                            return res.failure(
+                                B_SharpSyntaxError(
+                                    param_type.pos_start,
+                                    param_type.pos_end,
+                                    f"Unknown data type '{param_type.value}'.",
+                                )
+                            )
+                    else:
+                        return res.failure(
+                            B_SharpSyntaxError(
+                                self.current_token.pos_start,
+                                self.current_token.pos_end,
+                                "Expected type identifier after ':'.",
+                            )
+                        )
+
+                arg_nodes.append((param_name, param_type))
+
+            if self.current_token.type != TOKEN_RPAREN:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "Expected ',' or ')' in parameter list.",
+                    )
+                )
+
+            res.register_forward()
+            self.forward()
+
+        return_type_tok = None
+        if self.current_token.type == TOKEN_ARROW:
+            res.register_forward()
+            self.forward()
+
+            if self.current_token.type in (TOKEN_KEYWORD, TOKEN_IDENTIFIER):
+                return_type_tok = self.current_token
+                res.register_forward()
+                self.forward()
+                if TYPE_MAP.get(return_type_tok.value.lower()) is None:
+                    return res.failure(
+                        B_SharpSyntaxError(
+                            return_type_tok.pos_start,
+                            return_type_tok.pos_end,
+                            f"Unknown return type '{return_type_tok.value}'.",
+                        )
+                    )
+            else:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "Expected return type identifier after '->'.",
+                    )
+                )
+
+        if self.current_token.type != TOKEN_LCURLY:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '{' to start function body block.",
+                )
+            )
+
+        body_node = res.register(self.block())
+        if res.error:
+            return res
+
+        return res.success(
+            FunctionDefNode(var_name_tok, arg_nodes, return_type_tok, body_node)
+        )
+
+    def return_statement(self):
+        res = ParserResults()
+
+        if not self.current_token.matches(TOKEN_KEYWORD, "return"):
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected 'return'",
+                )
+            )
+
+        start_pos = self.current_token.pos_start.copy()
+        end_pos = self.current_token.pos_end.copy()
+
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type in (
+            TOKEN_NEWLINE,
+            TOKEN_SEMICOLON,
+            TOKEN_RCURLY,
+            TOKEN_EOF,
+        ):
+            return res.success(ReturnNode(None, start_pos, end_pos))
+
+        expr = res.register(self.expression())
+        if res.error:
+            return res
+
+        return res.success(ReturnNode(expr, start_pos, expr.pos_end))
+
 
 class RunTimeResult:
     def __init__(self):
         self.error = None
         self.value = None
+        self.func_return_value = None
 
     def register(self, res):
         if isinstance(res, RunTimeResult):
             if res.error:
                 self.error = res.error
+            if res.func_return_value is not None:
+                self.func_return_value = res.func_return_value
             return res.value
         return res
 
     def success(self, value):
         self.value = value
+        return self
+
+    def success_return(self, value):
+        self.func_return_value = value
         return self
 
     def failure(self, error):
@@ -950,6 +1228,8 @@ class Interpreter:
                 expression_value = res.register(self.visit(expression, branch_context))
                 if res.error:
                     return res
+                if res.func_return_value is not None:
+                    return res
                 return res.success(expression_value)
 
         if node.else_case:
@@ -957,7 +1237,8 @@ class Interpreter:
             else_value = res.register(self.visit(node.else_case, branch_context))
             if res.error:
                 return res
-
+            if res.func_return_value is not None:
+                return res
             return res.success(else_value)
 
         return res.success(
@@ -971,6 +1252,8 @@ class Interpreter:
         for stmt in node.statement_nodes:
             value = res.register(self.visit(stmt, context))
             if res.error:
+                return res
+            if res.func_return_value is not None:
                 return res
             last_value = value
 
@@ -1037,6 +1320,8 @@ class Interpreter:
             val = res.register(self.visit(node.body_node, body_context))
             if res.error:
                 return res
+            if res.func_return_value is not None:
+                return res
 
             elements.append(val)
 
@@ -1065,6 +1350,8 @@ class Interpreter:
             val = res.register(self.visit(node.body_node, body_context))
             if res.error:
                 return res
+            if res.func_return_value is not None:
+                return res
 
             elements.append(val)
 
@@ -1075,3 +1362,74 @@ class Interpreter:
         return res.success(
             elements[-1] if len(elements) > 0 else Empty().set_context(context)
         )
+
+    def visit_FunctionDefNode(self, node, context):
+        res = RunTimeResult()
+
+        func_name = node.var_name_tok.value
+        body_node = node.body_node
+        arg_nodes = node.arg_nodes
+        return_type_tok = node.return_type_tok
+
+        func_value = Function(
+            name=func_name,
+            body_node=body_node,
+            arg_nodes=arg_nodes,
+            return_type_tok=return_type_tok,
+            parent_context=context,
+        ).set_pos(node.pos_start, node.pos_end)
+
+        val, error = context.variables.set_pos(node.pos_start, node.pos_end).define(
+            name=func_name,
+            data_type=Function,
+            value=func_value,
+            is_const=False,
+        )
+
+        if error:
+            return res.failure(error)
+
+        return res.success(func_value)
+
+    def visit_CallNode(self, node, context):
+        res = RunTimeResult()
+
+        value_to_call = res.register(self.visit(node.node_to_call, context))
+        if res.error:
+            return res
+
+        if not isinstance(value_to_call, Function):
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"'{node.node_to_call}' is not a function.",
+                )
+            )
+
+        args = []
+        for arg_node in node.arg_nodes:
+            arg_val = res.register(self.visit(arg_node, context))
+            if res.error:
+                return res
+            args.append(arg_val)
+
+        return_value = res.register(value_to_call.execute(args, self))
+        if res.error:
+            return res
+
+        return res.success(return_value)
+
+    def visit_ReturnNode(self, node, context):
+        res = RunTimeResult()
+
+        if node.node_to_return:
+            return_val = res.register(self.visit(node.node_to_return, context))
+            if res.error:
+                return res
+        else:
+            return_val = (
+                Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
+            )
+
+        return res.success_return(return_val)

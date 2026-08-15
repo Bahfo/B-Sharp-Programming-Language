@@ -126,7 +126,7 @@ class Number:
     def power(self, power_factor):
         if isinstance(power_factor, Number):
             try:
-                result = self.value ** power_factor.value
+                result = self.value**power_factor.value
             except ZeroDivisionError:
                 return None, RunTimeError(
                     self.pos_start,
@@ -635,27 +635,14 @@ class Reference:
     pass
 
 
-# A helper dictionary for all declared types before.
-# Keys are normalized to lowercase so both `Number` and `number` resolve.
-TYPE_MAP = {
-    "boolean": Boolean,
-    "bool": Boolean,
-    "number": Number,
-    "int": Number,
-    "float": Number,
-    "string": String,
-    "empty": Empty,
-    "complex": Complex,
-    "nan": NaN,
-}
-
-
 class Context:
     """
     Runtime scope holding the variables table that persists across statements.
     """
 
-    def __init__(self, display_name, parent=None, parent_entry_pos=None, redefine=False):
+    def __init__(
+        self, display_name, parent=None, parent_entry_pos=None, redefine=False
+    ):
         self.display_name = display_name
         self.parent = parent
         self.parent_entry_pos = parent_entry_pos
@@ -820,3 +807,117 @@ class EnvironmentVariable:
             pos_end,
             f"Cannot assign value of type {val_type_str} to a variable declared with {data_type.__name__}.",
         )
+
+
+class Function:
+    """
+    Runtime representation of a defined function in B-Sharp.
+    """
+
+    def __init__(
+        self, name, body_node, arg_nodes, return_type_tok, parent_context=None
+    ):
+        self.name = name
+        self.body_node = body_node
+        self.arg_nodes = arg_nodes  # List of tuples: (param_name_tok, param_type_tok)
+        self.return_type_tok = return_type_tok
+        self.return_type = (
+            TYPE_MAP.get(return_type_tok.value.lower()) if return_type_tok else None
+        )
+        self.set_context(parent_context)
+        self.set_pos()
+
+    def set_context(self, context=None):
+        self.context = context
+        return self
+
+    def set_pos(self, pos_start=None, pos_end=None):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        return self
+
+    def execute(self, args, interpreter):
+        from B_Sharp.ASTNodes.parser import RunTimeResult
+
+        res = RunTimeResult()
+
+        exec_context = Context(
+            display_name=f"<function {self.name}>",
+            parent=self.context,
+            parent_entry_pos=self.pos_start,
+        )
+
+        if len(args) != len(self.arg_nodes):
+            return res.failure(
+                RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    f"Function '{self.name}' expects {len(self.arg_nodes)} arguments, but got {len(args)}.",
+                )
+            )
+
+        for i in range(len(args)):
+            param_name_tok, param_type_tok = self.arg_nodes[i]
+            arg_value = args[i]
+
+            param_type = (
+                TYPE_MAP.get(param_type_tok.value.lower()) if param_type_tok else None
+            )
+
+            _, err = exec_context.variables.set_pos(
+                param_name_tok.pos_start, param_name_tok.pos_end
+            ).define(
+                name=param_name_tok.value,
+                data_type=param_type,
+                value=arg_value,
+            )
+            if err:
+                return res.failure(err)
+
+        body_res = interpreter.visit(self.body_node, exec_context)
+
+        if body_res.error:
+            return res.failure(body_res.error)
+
+        return_val = body_res.func_return_value
+        if return_val is None:
+            return_val = (
+                Empty().set_context(exec_context).set_pos(self.pos_start, self.pos_end)
+            )
+
+        if self.return_type is not None:
+            if not isinstance(return_val, self.return_type) and not (
+                self.return_type is Empty and isinstance(return_val, Empty)
+            ):
+                val_type_str = type(return_val).__name__
+                return res.failure(
+                    RunTimeError(
+                        self.pos_start,
+                        self.pos_end,
+                        f"Function '{self.name}' returned type {val_type_str}, expected {self.return_type.__name__}.",
+                    )
+                )
+
+        return res.success(return_val)
+
+    def true_(self):
+        return True
+
+    def __repr__(self):
+        return f"<function {self.name}>"
+
+
+# A helper dictionary for all declared types before.
+# Keys are normalized to lowercase so both `Number` and `number` resolve.
+TYPE_MAP = {
+    "boolean": Boolean,
+    "bool": Boolean,
+    "number": Number,
+    "int": Number,
+    "float": Number,
+    "string": String,
+    "empty": Empty,
+    "complex": Complex,
+    "nan": NaN,
+    "function": Function,
+}

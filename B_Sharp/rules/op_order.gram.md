@@ -1,8 +1,8 @@
-# (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved.
-# This file holds Operations Orders for B-Sharp Programming Language.
-# Here, all expressions, terms, and factors are written with the 
-# rules assigned to each.
+##### (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved.
 
+This file holds Operations Orders for B-Sharp Programming Language. Here, all expressions, terms, and factors are written with the rules assigned to each.
+
+```
 EXPR    : TERM ((PLUS | MINUS) TERM) *
         : EXPR (AND | OR) EXPR
         : NOT EXPR
@@ -13,7 +13,4 @@ FACTOR  : (PLUS | MINUS) FACTOR
 POWER   : ATOM (POWER FACTOR) *
 ATOM    : INT | FLOAT | IDENTIFIER
         : LPARENT EXPR RPAREN
-
-# 
-# 
-# 
+```

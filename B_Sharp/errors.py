@@ -27,6 +27,9 @@ class RunTimeError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "RunTime Error", details)
 
+    def __str__(self):
+        return self.as_string()
+
 
 class AssignmentError(Error):
     def __init__(self, pos_start, pos_end, details):

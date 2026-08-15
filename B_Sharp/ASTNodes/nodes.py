@@ -209,3 +209,47 @@ class ForNode:
 
     def __repr__(self):
         return f"for ({self.init_node}; {self.condition_node}; {self.update_node}) {self.body_node}"
+
+
+class FunctionDefNode:
+    def __init__(self, var_name_tok, arg_nodes, return_type_tok, body_node):
+        self.var_name_tok = var_name_tok
+        self.arg_nodes = arg_nodes
+        self.return_type_tok = return_type_tok
+        self.body_node = body_node
+
+        self.pos_start = self.var_name_tok.pos_start
+        self.pos_end = self.body_node.pos_end
+
+    def __repr__(self):
+        return f"fn {self.var_name_tok.value}({self.arg_nodes}) -> {self.return_type_tok} {self.body_node}"
+
+
+class CallNode:
+    def __init__(self, node_to_call, arg_nodes, pos_end=None):
+        self.node_to_call = node_to_call
+        self.arg_nodes = arg_nodes
+
+        self.pos_start = self.node_to_call.pos_start
+        self.pos_end = (
+            pos_end
+            if pos_end
+            else (
+                self.arg_nodes[-1].pos_end
+                if len(self.arg_nodes) > 0
+                else self.node_to_call.pos_end
+            )
+        )
+
+    def __repr__(self):
+        return f"{self.node_to_call}({self.arg_nodes})"
+
+
+class ReturnNode:
+    def __init__(self, node_to_return, pos_start, pos_end):
+        self.node_to_return = node_to_return
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+    def __repr__(self):
+        return f"return {self.node_to_return}"

@@ -225,6 +225,11 @@ class Lexer:
                     tokens.append(
                         Token(TOKEN_DEC, pos_start=pos_start, pos_end=self.pos)
                     )
+                elif self.current_char == ">":
+                    self.forward()
+                    tokens.append(
+                        Token(TOKEN_ARROW, pos_start=pos_start, pos_end=self.pos)
+                    )
                 else:
                     tokens.append(
                         Token(TOKEN_MINUS, pos_start=pos_start, pos_end=self.pos)

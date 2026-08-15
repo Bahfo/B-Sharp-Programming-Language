@@ -19,6 +19,7 @@ TOKEN_EOF = "EOF"
 TOKEN_POWER = "POWER"
 TOKEN_INC = "INC"
 TOKEN_DEC = "DEC"
+TOKEN_ARROW = "ARROW"
 # Keywords
 TOKEN_KEYWORD = "KEYWORD"
 # Variables
@@ -46,6 +47,7 @@ TOKEN_STRING = "STRING"
 KEYWORDS = [
     "or",
     "if",
+    "fn",
     "var",
     "for",
     "and",
@@ -61,5 +63,6 @@ KEYWORDS = [
     "Empty",
     "Number",
     "String",
+    "return",
     "Boolean",
 ]

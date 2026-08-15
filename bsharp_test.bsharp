@@ -1,12 +1,28 @@
-var while_total = 0
-var count = 1
+var z = 10;
 
-while (count <= 5) {
-    while_total = while_total + count;
-    count ++
+z = "Hello";
+
+fn display(z) {
+    return z;
 }
 
-var inline_count = 0
-while inline_count < 3 then ++inline_count
+fn add(x, y) -> Number {
+    return x + y
+}
 
-inline_count
+fn sub(x , y) -> Number {
+    var z = x - y;
+    return z;
+}
+
+var add_shadow = add;
+add_shadow(3, 2);
+
+fn function_overloading(x, y) -> Number {
+    var value = x(5, 6);
+    return value + y;
+}
+
+function_overloading(add, 10);
+
+display(z)
