@@ -90,7 +90,7 @@ class Lexer:
 
         if self.current_char == "=":
             self.forward()
-            return Token(TOKEN_NOT_E, pos_start, self.pos), None
+            return Token(TOKEN_NOT_E, pos_start=pos_start, pos_end=self.pos), None
 
         return None, B_SharpSyntaxError(
             pos_start,
@@ -107,7 +107,7 @@ class Lexer:
             self.forward()
             token_type = TOKEN_EE
 
-        return Token(token_type, pos_start, self.pos)
+        return Token(token_type, pos_start=pos_start, pos_end=self.pos)
 
     def make_token_greater_than(self):
         pos_start = self.pos.copy()
@@ -118,7 +118,7 @@ class Lexer:
             self.forward()
             token_type = TOKEN_GTE
 
-        return Token(token_type, pos_start, self.pos)
+        return Token(token_type, pos_start=pos_start, pos_end=self.pos)
 
     def make_token_less_than(self):
         pos_start = self.pos.copy()
@@ -129,7 +129,7 @@ class Lexer:
             self.forward()
             token_type = TOKEN_LTE
 
-        return Token(token_type, pos_start, self.pos)
+        return Token(token_type, pos_start=pos_start, pos_end=self.pos)
 
     def stringnize(self, quote_char):
         # IDK why I called it like this

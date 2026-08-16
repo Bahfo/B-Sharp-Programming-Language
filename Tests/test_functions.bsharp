@@ -1,0 +1,11 @@
+const x = 12;
+
+fn testing_scope() -> {
+    var x = x + 13;
+    var z = 12;
+    return x, z;
+}
+
+z = z + 1
+
+testing_scope()

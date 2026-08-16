@@ -17,10 +17,16 @@ class IllegalCharacterError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Illegal Character", details)
 
+    def __str__(self):
+        return self.as_string()
+
 
 class B_SharpSyntaxError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Syntax Error", details)
+
+    def __str__(self):
+        return self.as_string()
 
 
 class RunTimeError(Error):
@@ -35,22 +41,37 @@ class AssignmentError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Uncaught Assignment Error.", details)
 
+    def __str__(self):
+        return self.as_string()
+
 
 class ModificationError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Uncaught Modification Error.", details)
+
+    def __str__(self):
+        return self.as_string()
 
 
 class EmptinessUnmatchedError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Assigning to Empty Error.", details)
 
+    def __str__(self):
+        return self.as_string()
+
 
 class ComparisonError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Comparison Syntax Error.", details)
 
+    def __str__(self):
+        return self.as_string()
+
 
 class DoubleFloatingAssignedError(Error):
     def __init__(self, pos_start, pos_end, details):
         super().__init__(pos_start, pos_end, "Double Floating Assigned Error.", details)
+
+    def __str__(self):
+        return self.as_string()

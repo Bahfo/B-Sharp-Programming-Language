@@ -490,6 +490,20 @@ class String:
             "Unexpected type for 'not' operation.",
         )
 
+    def and_(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'and' operation.",
+        )
+
+    def or_(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'or' operation.",
+        )
+
     def true_(self):
         return len(self.value) > 0
 
@@ -623,6 +637,18 @@ class Empty:
             return Boolean(False), None
         return Boolean(True), None
 
+    def less_than(self, other):
+        return Boolean(False), None
+
+    def greater_than(self, other):
+        return Boolean(False), None
+
+    def less_than_equal(self, other):
+        return Boolean(False), None
+
+    def greater_than_equal(self, other):
+        return Boolean(False), None
+
     def __repr__(self):
         return "none"
 
@@ -641,11 +667,17 @@ class Context:
     """
 
     def __init__(
-        self, display_name, parent=None, parent_entry_pos=None, redefine=False
+        self,
+        display_name,
+        parent=None,
+        parent_entry_pos=None,
+        redefine=False,
+        in_function=False,
     ):
         self.display_name = display_name
         self.parent = parent
         self.parent_entry_pos = parent_entry_pos
+        self.in_function = in_function
         self.variables = EnvironmentVariable(parent.variables if parent else None)
         self.variables.allow_redefine = redefine
 
@@ -836,23 +868,30 @@ class Function:
         self.pos_end = pos_end
         return self
 
-    def execute(self, args, interpreter):
+    def execute(self, args, interpreter, call_pos_start=None, call_pos_end=None):
         from B_Sharp.ASTNodes.parser import RunTimeResult
 
         res = RunTimeResult()
+
+        err_pos_start = call_pos_start or self.pos_start
+        err_pos_end = call_pos_end or self.pos_end
 
         exec_context = Context(
             display_name=f"<function {self.name}>",
             parent=self.context,
             parent_entry_pos=self.pos_start,
+            in_function=True,
         )
 
         if len(args) != len(self.arg_nodes):
+            expected_count = len(self.arg_nodes)
+            arg_label = "argument" if expected_count == 1 else "arguments"
+
             return res.failure(
                 RunTimeError(
-                    self.pos_start,
-                    self.pos_end,
-                    f"Function '{self.name}' expects {len(self.arg_nodes)} arguments, but got {len(args)}.",
+                    err_pos_start,
+                    err_pos_end,
+                    f"Function '{self.name}' expects {expected_count} {arg_label}, but got {len(args)}.",
                 )
             )
 
@@ -892,19 +931,131 @@ class Function:
                 val_type_str = type(return_val).__name__
                 return res.failure(
                     RunTimeError(
-                        self.pos_start,
-                        self.pos_end,
+                        err_pos_start,
+                        err_pos_end,
                         f"Function '{self.name}' returned type {val_type_str}, expected {self.return_type.__name__}.",
                     )
                 )
 
         return res.success(return_val)
 
+    def addition(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for addition operation.",
+        )
+
+    def subtraction(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for subtraction operation.",
+        )
+
+    def multiplication(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for multiplication operation.",
+        )
+
+    def division(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for division operation.",
+        )
+
+    def integer_division(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for division operation.",
+        )
+
+    def power(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for power operation.",
+        )
+
+    def and_(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'and' operation.",
+        )
+
+    def or_(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'or' operation.",
+        )
+
+    def not_(self):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'not' operation.",
+        )
+
+    def is_equal(self, other):
+        if isinstance(other, Function):
+            return Boolean(self is other), None
+        return Boolean(False), None
+
+    def not_equal(self, other):
+        if isinstance(other, Function):
+            return Boolean(self is not other), None
+        return Boolean(True), None
+
+    def less_than(self, other):
+        return Boolean(False), None
+
+    def greater_than(self, other):
+        return Boolean(False), None
+
+    def less_than_equal(self, other):
+        return Boolean(False), None
+
+    def greater_than_equal(self, other):
+        return Boolean(False), None
+
     def true_(self):
         return True
 
     def __repr__(self):
         return f"<function {self.name}>"
+
+
+class OverloadSet:
+    """
+    A supportive declaration for functions. It basically is the key behind
+    overloading and overwriting in B-Sharp.
+
+    Overloading: The process of overloading is defining an already defined
+    function by keeping *same identifier*, but with *different parameter
+    signature*.
+
+    Overwriting: The process of completely replacing an existing signature
+    or in other words *redeclaring the existing signature in the same
+    context.*
+    """
+
+    def __init__(self, name):
+        self.name = name
+
+        # A helper dictionary to map a signature key to a function's instance.
+        # Key format: (arity, args)
+        self.variants = {}
+
+    def get_signature_key(self, func):
+        """
+        Extracts a key based on parameter count and type names
+        """
 
 
 # A helper dictionary for all declared types before.

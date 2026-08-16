@@ -1,3 +1,5 @@
+import sys
+
 from B_Sharp.tokens import *
 from B_Sharp.errors import *
 from B_Sharp.ASTNodes.instances import *
@@ -447,13 +449,6 @@ class Parser:
                     return res
                 return res.success(VariableReassignNode(name_tok, value_node))
 
-            elif next_tok.type in (TOKEN_INC, TOKEN_DEC):
-                var_tok = self.current_token
-                res.register(self.forward())
-                op_tok = self.current_token
-                res.register(self.forward())
-                return res.success(IncrementNode(var_tok, op_tok, is_postfix=True))
-
         return self.expression()
 
     def statements(self):
@@ -483,7 +478,14 @@ class Parser:
                 break
 
             if newline_count == 0:
-                break
+                # A closing brace terminates a block statement, so the next
+                # statement may begin on the same line ('} stmt;').
+                previous_is_rcurly = (
+                    self.token_index > 0
+                    and self.tokens[self.token_index - 1].type == TOKEN_RCURLY
+                )
+                if not previous_is_rcurly:
+                    break
 
             stmt = res.register(self.statement())
             if res.error:
@@ -803,6 +805,7 @@ class Parser:
         res.register_forward()
         self.forward()
         arg_nodes = []
+        seen_param_names = set()
 
         if self.current_token.type == TOKEN_RPAREN:
             res.register_forward()
@@ -847,6 +850,15 @@ class Parser:
                     )
 
             arg_nodes.append((param_name, param_type))
+            if param_name.value in seen_param_names:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        param_name.pos_start,
+                        param_name.pos_end,
+                        f"Duplicate parameter name '{param_name.value}' in function '{var_name_tok.value}'.",
+                    )
+                )
+            seen_param_names.add(param_name.value)
 
             while self.current_token.type == TOKEN_COMMA:
                 res.register_forward()
@@ -891,6 +903,15 @@ class Parser:
                         )
 
                 arg_nodes.append((param_name, param_type))
+                if param_name.value in seen_param_names:
+                    return res.failure(
+                        B_SharpSyntaxError(
+                            param_name.pos_start,
+                            param_name.pos_end,
+                            f"Duplicate parameter name '{param_name.value}' in function '{var_name_tok.value}'.",
+                        )
+                    )
+                seen_param_names.add(param_name.value)
 
             if self.current_token.type != TOKEN_RPAREN:
                 return res.failure(
@@ -1009,6 +1030,20 @@ class RunTimeResult:
 
 
 class Interpreter:
+    def __init__(self, max_call_depth=500):
+        self.max_call_depth = max_call_depth
+        self.current_call_depth = 0
+        if sys.getrecursionlimit() < 10000:
+            sys.setrecursionlimit(10000)
+
+    def _inside_function(self, context):
+        current = context
+        while current is not None:
+            if getattr(current, "in_function", False):
+                return True
+            current = current.parent
+        return False
+
     def visit(self, node, context):
         method_name = f"visit_{type(node).__name__}"
         method = getattr(self, method_name, self.no_visit_method)
@@ -1045,6 +1080,14 @@ class Interpreter:
         if res.error:
             return res
 
+        # 'and'/'or' short-circuit: the right operand is only evaluated when
+        # the result can still change.
+        if node.op_token.type == TOKEN_KEYWORD and node.op_token.value in (
+            "and",
+            "or",
+        ):
+            return self.visit_short_circuit(node, left, res, context)
+
         right = res.register(self.visit(node.right_node, context))
         if res.error:
             return res
@@ -1073,10 +1116,6 @@ class Interpreter:
             result, error = left.less_than_equal(right)
         elif node.op_token.type == TOKEN_GTE:
             result, error = left.greater_than_equal(right)
-        elif node.op_token.type == TOKEN_KEYWORD and node.op_token.value == "and":
-            result, error = left.and_(right)
-        elif node.op_token.type == TOKEN_KEYWORD and node.op_token.value == "or":
-            result, error = left.or_(right)
         else:
             result, error = None, RunTimeError(
                 node.op_token.pos_start,
@@ -1088,6 +1127,33 @@ class Interpreter:
             return res.failure(error)
         else:
             return res.success(result.set_pos(node.pos_start, node.pos_end))
+
+    def visit_short_circuit(self, node, left, res, context):
+        is_and = node.op_token.value == "and"
+
+        if isinstance(left, Boolean):
+            if is_and:
+                if left.value:
+                    right = res.register(self.visit(node.right_node, context))
+                    if res.error:
+                        return res
+                    result, error = left.and_(right)
+                else:
+                    result, error = Boolean(False), None
+            else:
+                if left.value:
+                    result, error = Boolean(True), None
+                else:
+                    right = res.register(self.visit(node.right_node, context))
+                    if res.error:
+                        return res
+                    result, error = left.or_(right)
+        else:
+            result, error = left.and_(left) if is_and else left.or_(left)
+
+        if error:
+            return res.failure(error)
+        return res.success(result.set_pos(node.pos_start, node.pos_end))
 
     def visit_UnaryOpNode(self, node, context):
         res = RunTimeResult()
@@ -1414,7 +1480,25 @@ class Interpreter:
                 return res
             args.append(arg_val)
 
-        return_value = res.register(value_to_call.execute(args, self))
+        if self.current_call_depth >= self.max_call_depth:
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    "Maximum call depth exceeded (recursion too deep).",
+                )
+            )
+
+        self.current_call_depth += 1
+        try:
+            return_value = res.register(
+                value_to_call.execute(
+                    args, self, call_pos_start=node.pos_start, call_pos_end=node.pos_end
+                )
+            )
+        finally:
+            self.current_call_depth -= 1
+
         if res.error:
             return res
 
@@ -1422,6 +1506,15 @@ class Interpreter:
 
     def visit_ReturnNode(self, node, context):
         res = RunTimeResult()
+
+        if not self._inside_function(context):
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    "Cannot use 'return' outside of a function.",
+                )
+            )
 
         if node.node_to_return:
             return_val = res.register(self.visit(node.node_to_return, context))
