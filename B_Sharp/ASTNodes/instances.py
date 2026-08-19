@@ -422,8 +422,11 @@ class String:
         return None, RunTimeError(
             self.pos_start,
             self.pos_end,
-            "String multiplication requires an integer power factor.",
+            "String multiplication requires an integer factor.",
         )
+
+    def _reversed_multiplication(self, other):
+        return self.multiplication(other)
 
     def subtraction(self, other):
         return None, RunTimeError(
@@ -506,6 +509,19 @@ class String:
 
     def true_(self):
         return len(self.value) > 0
+
+    def get_index(self, index):
+        i = int(index)
+        if i < 0:
+            i += len(self.value)
+        if i < 0 or i >= len(self.value):
+            return None, RunTimeError(
+                self.pos_start, self.pos_end, "Index out of bounds"
+            )
+        return String(self.value[i]), None
+
+    def get_slice(self, start, end):
+        return String(self.value[start:end]), None
 
     def __repr__(self):
         return f'"{self.value}"'
@@ -661,6 +677,463 @@ class Reference:
     pass
 
 
+class List:
+    """
+    A complex datatype representing a collection of data.
+
+    Introduction:\n
+    A list is a datatype that holds a collection of other complex or atomic
+    data types. It can hold.
+    """
+
+    def __init__(self, list_of_elements: list):
+        self.set_pos()
+        self.set_context()
+        self.list_of_elements = list_of_elements
+
+    def set_pos(self, pos_start=None, pos_end=None):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        return self
+
+    def set_context(self, context=None):
+        self.context = context
+        return self
+
+    def append(self, element):
+        self.list_of_elements.append(element)
+
+    def push(self, element, index=None):
+        """
+        Insert element at index (or append if index is None).
+        Returns new List.
+        """
+        new_elements = self.list_of_elements.copy()
+        if index is None:
+            new_elements.append(element)
+        else:
+            new_elements.insert(int(index), element)
+        return List(new_elements)
+
+    def drop(self, index):
+        """
+        Remove element at index. Returns new List.
+        """
+        new_elements = self.list_of_elements.copy()
+        del new_elements[int(index)]
+        return List(new_elements)
+
+    def delete(self, start, end):
+        """
+        Remove elements from start to end (exclusive).
+        Returns new List.
+        """
+        new_elements = self.list_of_elements.copy()
+        del new_elements[int(start) : int(end)]
+        return List(new_elements)
+
+    def multiplication(self, other):
+        if isinstance(other, Number):
+            new_elements = []
+            for element in self.list_of_elements:
+                res, error = element.multiplication(other)
+                if not error:
+                    new_elements.append(res)
+            return (
+                List(new_elements)
+                .set_context(self.context)
+                .set_pos(self.pos_start, self.pos_end),
+                None,
+            )
+
+        if isinstance(other, List):
+            if len(self.list_of_elements) != len(other.list_of_elements):
+                return None, RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    f"List multiplication requires both lists to be the same size, got {len(self.list_of_elements)} and {len(other.list_of_elements)}.",
+                )
+            new_elements = []
+            for i, j in zip(self.list_of_elements, other.list_of_elements):
+                res, error = i.multiplication(j)
+                if not error:
+                    new_elements.append(res)
+            return (
+                List(new_elements)
+                .set_context(self.context)
+                .set_pos(self.pos_start, self.pos_end),
+                None,
+            )
+
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            f"Unsupported type '{type(other).__name__}' for list multiplication.",
+        )
+
+    def _reversed_multiplication(self, other):
+        return self.multiplication(other)
+
+    def addition(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for list addition.",
+        )
+
+    def subtraction(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for list subtraction.",
+        )
+
+    def division(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for list division.",
+        )
+
+    def integer_division(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for list integer division.",
+        )
+
+    def power(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for list power operation.",
+        )
+
+    def is_equal(self, other):
+        if isinstance(other, List):
+            if len(self.list_of_elements) != len(other.list_of_elements):
+                return Boolean(False), None
+            for a, b in zip(self.list_of_elements, other.list_of_elements):
+                res, error = a.is_equal(b)
+                if error:
+                    return Boolean(False), None
+                if not res.value:
+                    return Boolean(False), None
+            return Boolean(True), None
+        return Boolean(False), None
+
+    def not_equal(self, other):
+        res, error = self.is_equal(other)
+        if error:
+            return res, error
+        return Boolean(not res.value), None
+
+    def less_than(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for list less than comparison.",
+        )
+
+    def greater_than(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for list greater than comparison.",
+        )
+
+    def less_than_equal(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for list less than or equal comparison.",
+        )
+
+    def greater_than_equal(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for list greater than or equal comparison.",
+        )
+
+    def and_(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'and' operation.",
+        )
+
+    def or_(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'or' operation.",
+        )
+
+    def not_(self):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'not' operation.",
+        )
+
+    def true_(self):
+        return Boolean(len(self.list_of_elements) > 0)
+
+    def copy(self):
+        copy = List(self.list_of_elements[:])
+        copy.set_pos(self.pos_start, self.pos_end)
+        copy.set_context(self.context)
+        return copy
+
+    def __repr__(self):
+        return f"{self.list_of_elements}"
+
+
+class Array:
+    """Base class for typed arrays. Element type is enforced at assignment time."""
+
+    def __init__(self, element_type_class, list_of_elements=None):
+        self.element_type = element_type_class
+        self.list_of_elements = list_of_elements or []
+        self.set_pos()
+        self.set_context()
+
+    def set_pos(self, pos_start=None, pos_end=None):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        return self
+
+    def set_context(self, context=None):
+        self.context = context
+        return self
+
+    def push(self, element, index=None):
+        """
+        Insert element at index (or append if index is None).
+        Returns new List.
+        """
+        if isinstance(self._validate_element(element), RunTimeError):
+            return
+        new_elements = self.list_of_elements.copy()
+        if index is None:
+            new_elements.append(element)
+        else:
+            new_elements.insert(int(index), element)
+        return List(new_elements)
+
+    def drop(self, index):
+        """
+        Remove element at index. Returns new List.
+        """
+        new_elements = self.list_of_elements.copy()
+        del new_elements[int(index)]
+        return List(new_elements)
+
+    def delete(self, start, end):
+        """
+        Remove elements from start to end (exclusive).
+        Returns new List.
+        """
+        new_elements = self.list_of_elements.copy()
+        del new_elements[int(start) : int(end)]
+        return List(new_elements)
+
+    def _validate_element(self, element):
+        if isinstance(element, Empty):
+            return None
+        if isinstance(element, self.element_type):
+            return None
+        return RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            f"Expected {self.element_type.__name__} element, got {type(element).__name__}.",
+        )
+
+    def _validate_all(self):
+        for el in self.list_of_elements:
+            err = self._validate_element(el)
+            if err:
+                return err
+        return None
+
+    def multiplication(self, other):
+        if isinstance(other, Number):
+            new_elements = []
+            for element in self.list_of_elements:
+                res, error = element.multiplication(other)
+                if not error:
+                    new_elements.append(res)
+            return self._new_array(new_elements), None
+
+        if isinstance(other, Array):
+            if not isinstance(other, type(self)):
+                return None, RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    f"Cannot perform element-wise multiplication between {type(self).__name__} and {type(other).__name__}.",
+                )
+            if len(self.list_of_elements) != len(other.list_of_elements):
+                return None, RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    f"Array multiplication requires both arrays to be the same size, got {len(self.list_of_elements)} and {len(other.list_of_elements)}.",
+                )
+            new_elements = []
+            for a, b in zip(self.list_of_elements, other.list_of_elements):
+                res, error = a.multiplication(b)
+                if not error:
+                    new_elements.append(res)
+            return self._new_array(new_elements), None
+
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            f"Unsupported type '{type(other).__name__}' for array multiplication.",
+        )
+
+    def _reversed_multiplication(self, other):
+        return self.multiplication(other)
+
+    def addition(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for array addition.",
+        )
+
+    def subtraction(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for array subtraction.",
+        )
+
+    def division(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for array division.",
+        )
+
+    def integer_division(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for array integer division.",
+        )
+
+    def power(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for array power operation.",
+        )
+
+    def is_equal(self, other):
+        if isinstance(other, Array) and type(self) is type(other):
+            if len(self.list_of_elements) != len(other.list_of_elements):
+                return Boolean(False), None
+            for a, b in zip(self.list_of_elements, other.list_of_elements):
+                res, error = a.is_equal(b)
+                if error:
+                    return Boolean(False), None
+                if not res.value:
+                    return Boolean(False), None
+            return Boolean(True), None
+        return Boolean(False), None
+
+    def not_equal(self, other):
+        res, error = self.is_equal(other)
+        if error:
+            return res, error
+        return Boolean(not res.value), None
+
+    def less_than(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for array less than comparison.",
+        )
+
+    def greater_than(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for array greater than comparison.",
+        )
+
+    def less_than_equal(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for array less than or equal comparison.",
+        )
+
+    def greater_than_equal(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unsupported operand type for array greater than or equal comparison.",
+        )
+
+    def and_(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'and' operation.",
+        )
+
+    def or_(self, other):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'or' operation.",
+        )
+
+    def not_(self):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            "Unexpected type for 'not' operation.",
+        )
+
+    def true_(self):
+        return Boolean(len(self.list_of_elements) > 0)
+
+    def _new_array(self, elements):
+        arr = type(self)(elements)
+        arr.set_pos(self.pos_start, self.pos_end)
+        arr.set_context(self.context)
+        return arr
+
+    def copy(self):
+        return self._new_array(self.list_of_elements[:])
+
+    def __repr__(self):
+        return f"{self.list_of_elements}"
+
+
+class NumberArray(Array):
+    def __init__(self, list_of_elements=None):
+        super().__init__(Number, list_of_elements)
+
+
+class StringArray(Array):
+    def __init__(self, list_of_elements=None):
+        super().__init__(String, list_of_elements)
+
+
+class BooleanArray(Array):
+    def __init__(self, list_of_elements=None):
+        super().__init__(Boolean, list_of_elements)
+
+
+class EmptyArray(Array):
+    def __init__(self, list_of_elements=None):
+        super().__init__(Empty, list_of_elements)
+
+
 class Context:
     """
     Runtime scope holding the variables table that persists across statements.
@@ -806,13 +1279,29 @@ class EnvironmentVariable:
             )
         return self.variables[name]["value"], None
 
+    def get_type(self, name, pos_start=None, pos_end=None):
+        """Fetches variable declared type class by name."""
+
+        if pos_start is None:
+            pos_start, pos_end = self.pos_start, self.pos_end
+
+        if name not in self.variables:
+            if self.parent is not None:
+                return self.parent.get_type(name, pos_start, pos_end)
+            return None, AssignmentError(
+                pos_start,
+                pos_end,
+                f"'{name}' is not defined.",
+            )
+        return self.variables[name]["type"], None
+
     def _type_mismatch_error(self, data_type, value, pos_start=None, pos_end=None):
         """Validates value type against declared variable type."""
 
         if pos_start is None:
             pos_start, pos_end = self.pos_start, self.pos_end
 
-        if data_type is None:  # Weakly typed variable will accepts any value
+        if data_type is None:  # Weakly typed variable will accept any value
             return None
 
         if value is None:  # Uninitialized value is treated as `none`
@@ -854,7 +1343,7 @@ class Function:
         self.arg_nodes = arg_nodes  # List of tuples: (param_name_tok, param_type_tok)
         self.return_type_tok = return_type_tok
         self.return_type = (
-            TYPE_MAP.get(return_type_tok.value.lower()) if return_type_tok else None
+            TYPE_MAP.get(return_type_tok.value) if return_type_tok else None
         )
         self.set_context(parent_context)
         self.set_pos()
@@ -899,9 +1388,20 @@ class Function:
             param_name_tok, param_type_tok = self.arg_nodes[i]
             arg_value = args[i]
 
-            param_type = (
-                TYPE_MAP.get(param_type_tok.value.lower()) if param_type_tok else None
-            )
+            param_type = TYPE_MAP.get(param_type_tok.value) if param_type_tok else None
+
+            if (
+                param_type
+                and issubclass(param_type, Array)
+                and isinstance(arg_value, List)
+            ):
+                array_class = TYPE_MAP.get(param_type_tok.value)
+                if array_class:
+                    arg_value = array_class(arg_value.list_of_elements)
+                    arg_value.set_pos(err_pos_start, err_pos_end)
+                    err = arg_value._validate_all()
+                    if err:
+                        return res.failure(err)
 
             _, err = exec_context.variables.set_pos(
                 param_name_tok.pos_start, param_name_tok.pos_end
@@ -925,6 +1425,15 @@ class Function:
             )
 
         if self.return_type is not None:
+            if issubclass(self.return_type, Array) and isinstance(return_val, List):
+                array_class = TYPE_MAP.get(self.return_type_tok.value)
+                if array_class:
+                    return_val = array_class(return_val.list_of_elements)
+                    return_val.set_pos(err_pos_start, err_pos_end)
+                    err = return_val._validate_all()
+                    if err:
+                        return res.failure(err)
+
             if not isinstance(return_val, self.return_type) and not (
                 self.return_type is Empty and isinstance(return_val, Empty)
             ):
@@ -1061,14 +1570,14 @@ class OverloadSet:
 # A helper dictionary for all declared types before.
 # Keys are normalized to lowercase so both `Number` and `number` resolve.
 TYPE_MAP = {
-    "boolean": Boolean,
-    "bool": Boolean,
-    "number": Number,
-    "int": Number,
-    "float": Number,
-    "string": String,
-    "empty": Empty,
-    "complex": Complex,
-    "nan": NaN,
-    "function": Function,
+    "Bool": Boolean,
+    "Number": Number,
+    "String": String,
+    "Empty": Empty,
+    "List": List,
+    "Function": Function,
+    "Number[]": NumberArray,
+    "String[]": StringArray,
+    "Boolean[]": BooleanArray,
+    "Empty[]": EmptyArray,
 }

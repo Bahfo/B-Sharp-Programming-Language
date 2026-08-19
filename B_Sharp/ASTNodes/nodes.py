@@ -129,6 +129,18 @@ class NoneNode:
         return "none"
 
 
+class ListNode:
+    """Node for a list."""
+
+    def __init__(self, list_of_expressions, pos_start, pos_end):
+        self.list_of_expressions = list_of_expressions
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+    def __repr__(self):
+        return f"{self.list_of_expressions}"
+
+
 class IfNode:
     def __init__(self, cases, else_case):
         self.cases = cases
@@ -253,3 +265,37 @@ class ReturnNode:
 
     def __repr__(self):
         return f"return {self.node_to_return}"
+
+
+class PropertyAccessNode:
+    def __init__(self, node, property_name_tok):
+        self.node = node  # the object being accessed
+        self.property_name_token = property_name_tok  # TOKEN_IDENTIFIER
+        self.pos_start = node.pos_start
+        self.pos_end = property_name_tok.pos_end
+
+
+class IndexAccessNode:
+    def __init__(self, node, index_node):
+        self.node = node  # the list/array/string being indexed
+        self.index_node = index_node  # expression node for the index
+        self.pos_start = node.pos_start
+        self.pos_end = self.index_node.pos_end
+
+
+class SliceNode:
+    def __init__(self, node, start_node, end_node, pos_end):
+        self.node = node
+        self.start_node = start_node
+        self.end_node = end_node
+        self.pos_start = node.pos_start
+        self.pos_end = pos_end
+
+
+class MethodCallNode:
+    def __init__(self, object_node, method_name_tok, arg_nodes, pos_end=None):
+        self.object_node = object_node
+        self.method_name_tok = method_name_tok
+        self.arg_nodes = arg_nodes
+        self.pos_start = object_node.pos_start
+        self.pos_end = pos_end or (arg_nodes[-1].pos_end if arg_nodes else method_name_tok.pos_end)

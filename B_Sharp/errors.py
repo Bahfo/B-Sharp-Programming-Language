@@ -6,11 +6,37 @@ class Error:
         self.details = details
 
     def as_string(self):
-        result = f"{self.error_name} :\n{self.details}\n"
+        from B_Sharp.Errors.format import format
+        from B_Sharp.Errors.error_hints import HINTS
+
         if self.pos_start is None:
-            return result
-        result += f"File {self.pos_start.file_name}, Ln: {self.pos_start.line + 1}"
-        return result
+            return f"{self.error_name} :\n{self.details}\n"
+
+        source_lines = self.pos_start.file_text.split("\n")
+        source_line = (
+            source_lines[self.pos_start.line]
+            if self.pos_start.line < len(source_lines)
+            else ""
+        )
+
+        # Convert error details string into a list of lines for error_message
+        details_lines = (
+            self.details.split("\n")
+            if isinstance(self.details, str)
+            else [str(self.details)]
+        )
+
+        return format(
+            error_message=details_lines,
+            error_column=self.pos_start.col + 1,
+            error_type=self.error_name,
+            error_line=self.pos_start.line + 1,
+            error_code=source_line,
+            error_hint=HINTS.get(
+                self.error_name, "check the code at the indicated position"
+            ),
+            file=self.pos_start.file_name,
+        )
 
 
 class IllegalCharacterError(Error):

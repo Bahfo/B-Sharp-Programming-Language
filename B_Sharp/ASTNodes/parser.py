@@ -4,6 +4,7 @@ from B_Sharp.tokens import *
 from B_Sharp.errors import *
 from B_Sharp.ASTNodes.instances import *
 from B_Sharp.ASTNodes.nodes import *
+from B_Sharp.builtins import BuiltinFunction
 
 
 class ParserResults:
@@ -121,6 +122,13 @@ class Parser:
         elif tok.type == TOKEN_KEYWORD and tok.value == "if":
             return self.if_expression()
 
+        elif tok.type == TOKEN_LBRACKET:
+            list_expression = res.register(self.make_list())
+            if res.error:
+                return res
+
+            return res.success(list_expression)
+
         return res.failure(
             B_SharpSyntaxError(
                 tok.pos_start,
@@ -128,6 +136,62 @@ class Parser:
                 f"Expected int, float, identifier, '+', '-', '(', or keyword, got '{tok}'",
             )
         )
+
+    def make_list(self):
+        res = ParserResults()
+        list_of_elements = []
+        pos_start = self.current_token.pos_start.copy()
+
+        if self.current_token.type != TOKEN_LBRACKET:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '[' for creating a list.",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type == TOKEN_RBRACKET:
+            res.register_forward()
+            self.forward()
+
+        else:
+            list_of_elements.append(res.register(self.expression()))
+            if res.error:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        f"Expected a valid node inside list. Got unexpected {self.current_token}",
+                    )
+                )
+
+            while self.current_token.type == TOKEN_COMMA:
+                res.register_forward()
+                self.forward()
+
+                list_of_elements.append(res.register(self.expression()))
+                if res.error:
+                    return res
+
+            if self.current_token.type != TOKEN_RBRACKET:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        f"Expected ',' or ']' for a list definition. Got {self.current_token}",
+                    )
+                )
+
+            res.register_forward()
+            self.forward()
+
+            return res.success(
+                ListNode(list_of_elements, pos_start, self.current_token.pos_end.copy())
+            )
 
     def if_expression(self):
         res = ParserResults()
@@ -306,6 +370,26 @@ class Parser:
     # Variable Parsing Rules
     ################################################################
 
+    def _parse_array_suffix(self, type_tok):
+        """Check for [] suffix after a type token. Returns (modified_token, error)."""
+        if self.current_token.type == TOKEN_LBRACKET:
+            self.forward()
+            if self.current_token.type != TOKEN_RBRACKET:
+                return None, B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected ']' after type in array declaration.",
+                )
+            self.forward()
+            if type_tok.value == "List":
+                return None, B_SharpSyntaxError(
+                    type_tok.pos_start,
+                    type_tok.pos_end,
+                    "Array of List is not supported. Use List for untyped collections.",
+                )
+            type_tok.value = type_tok.value + "[]"
+        return type_tok, None
+
     def var_decl(self):
         """Parses variable declarations:
         `var x : Number = 10`
@@ -357,7 +441,11 @@ class Parser:
                     )
                 )
 
-            if TYPE_MAP.get(type_tok.value.lower()) is None:
+            type_tok, err = self._parse_array_suffix(type_tok)
+            if err:
+                return res.failure(err)
+
+            if TYPE_MAP.get(type_tok.value) is None:
                 return res.failure(
                     B_SharpSyntaxError(
                         type_tok.pos_start,
@@ -419,7 +507,7 @@ class Parser:
         if self.current_token.type == TOKEN_KEYWORD:
             if self.current_token.value in ("var", "const"):
                 return self.var_decl()
-            elif self.current_token.value == "fn":
+            elif self.current_token.value in ("fn", "function"):
                 return self.fn_def()
             elif self.current_token.value == "return":
                 return self.return_statement()
@@ -716,26 +804,149 @@ class Parser:
 
     def call(self):
         res = ParserResults()
-        atom = res.register(self.atom())
+        node = res.register(self.atom())
         if res.error:
             return res
 
-        if self.current_token.type == TOKEN_LPAREN:
-            return self.finish_call(atom)
+        while True:
+            if self.current_token.type == TOKEN_LPAREN:
+                node = res.register(self.finish_call(node))
+                if res.error:
+                    return res
 
-        return res.success(atom)
+            elif self.current_token.type == TOKEN_LBRACKET:
+                node = res.register(self.parse_index_or_slice(node))
+                if res.error:
+                    return res
 
-    def finish_call(self, node_to_call):
+            elif self.current_token.type == TOKEN_DOT:
+                res.register_forward()
+                self.forward()
+                if self.current_token.type != TOKEN_IDENTIFIER:
+                    return res.failure(
+                        B_SharpSyntaxError(
+                            self.current_token.pos_start,
+                            self.current_token.pos_end,
+                            "Expected property or method name",
+                        )
+                    )
+                property_tok = self.current_token
+                res.register_forward()
+                self.forward()
+
+                if self.current_token.type == TOKEN_LPAREN:
+                    node = res.register(self.finish_method_call(node, property_tok))
+                    if res.error:
+                        return res
+                else:
+                    node = PropertyAccessNode(node, property_tok)
+            else:
+                break
+        return res.success(node)
+
+    def parse_index_or_slice(self, node):
+        res = ParserResults()
+        res.register_forward()
+        self.forward()  # skip '['
+
+        start_node = None
+        end_node = None
+        is_slice = False
+
+        if self.current_token.type == TOKEN_DOTDOT:
+            is_slice = True
+            res.register_forward()
+            self.forward()  # skip '..'
+            end_node = res.register(self.expression())
+            if res.error:
+                return res
+        else:
+            expr = res.register(self.expression())
+            if res.error:
+                return res
+
+            if self.current_token.type == TOKEN_DOTDOT:
+                is_slice = True
+                start_node = expr
+                res.register_forward()
+                self.forward()  # skip '..'
+                if self.current_token.type != TOKEN_RBRACKET:
+                    end_node = res.register(self.expression())
+                    if res.error:
+                        return res
+            else:
+                start_node = expr
+
+        if self.current_token.type != TOKEN_RBRACKET:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected closing brackets ']'",
+                )
+            )
+
+        rbracket_pos = self.current_token.pos_end
+        res.register_forward()
+        self.forward()
+
+        if is_slice:
+            return res.success(SliceNode(node, start_node, end_node, rbracket_pos))
+        else:
+            return res.success(IndexAccessNode(node, start_node))
+
+    def finish_method_call(self, object_node, method_name_tok):
         res = ParserResults()
         arg_nodes = []
-
         res.register_forward()
         self.forward()  # skip '('
 
         if self.current_token.type == TOKEN_RPAREN:
             rparen_pos = self.current_token.pos_end
             res.register_forward()
-            self.forward()  # skip ')'
+            self.forward()
+            return res.success(
+                MethodCallNode(object_node, method_name_tok, arg_nodes, rparen_pos)
+            )
+
+        arg_nodes.append(res.register(self.expression()))
+        if res.error:
+            return res
+
+        while self.current_token.type == TOKEN_COMMA:
+            res.register_forward()
+            self.forward()
+            arg_nodes.append(res.register(self.expression()))
+            if res.error:
+                return res
+
+        if self.current_token.type != TOKEN_RPAREN:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected ')' or ','",
+                )
+            )
+
+        rparen_pos = self.current_token.pos_end
+        res.register_forward()
+        self.forward()
+        return res.success(
+            MethodCallNode(object_node, method_name_tok, arg_nodes, rparen_pos)
+        )
+
+    def finish_call(self, node_to_call):
+        res = ParserResults()
+        arg_nodes = []
+
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type == TOKEN_RPAREN:
+            rparen_pos = self.current_token.pos_end
+            res.register_forward()
+            self.forward()
             return res.success(CallNode(node_to_call, arg_nodes, pos_end=rparen_pos))
 
         arg_nodes.append(res.register(self.expression()))
@@ -767,12 +978,14 @@ class Parser:
     def fn_def(self):
         res = ParserResults()
 
-        if not self.current_token.matches(TOKEN_KEYWORD, "fn"):
+        if not self.current_token.matches(
+            TOKEN_KEYWORD, "fn"
+        ) and not self.current_token.matches(TOKEN_KEYWORD, "function"):
             return res.failure(
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected 'fn'",
+                    "Expected 'fn' or 'function'",
                 )
             )
 
@@ -780,12 +993,22 @@ class Parser:
         self.forward()
 
         # Name casting rule: anonymous functions are invalid
+        if self.current_token.type == TOKEN_KEYWORD:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Unallowed calling of a function by a keyword.",
+                )
+            )
+
         if self.current_token.type != TOKEN_IDENTIFIER:
             return res.failure(
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected function name identifier after 'fn'. Anonymous functions are not allowed.",
+                    f"Expected function identifier after function name.\n"
+                    "Anonymous functions are not allowed.",
                 )
             )
 
@@ -832,7 +1055,10 @@ class Parser:
                     param_type = self.current_token
                     res.register_forward()
                     self.forward()
-                    if TYPE_MAP.get(param_type.value.lower()) is None:
+                    param_type, err = self._parse_array_suffix(param_type)
+                    if err:
+                        return res.failure(err)
+                    if TYPE_MAP.get(param_type.value) is None:
                         return res.failure(
                             B_SharpSyntaxError(
                                 param_type.pos_start,
@@ -885,7 +1111,10 @@ class Parser:
                         param_type = self.current_token
                         res.register_forward()
                         self.forward()
-                        if TYPE_MAP.get(param_type.value.lower()) is None:
+                        param_type, err = self._parse_array_suffix(param_type)
+                        if err:
+                            return res.failure(err)
+                        if TYPE_MAP.get(param_type.value) is None:
                             return res.failure(
                                 B_SharpSyntaxError(
                                     param_type.pos_start,
@@ -934,7 +1163,10 @@ class Parser:
                 return_type_tok = self.current_token
                 res.register_forward()
                 self.forward()
-                if TYPE_MAP.get(return_type_tok.value.lower()) is None:
+                return_type_tok, err = self._parse_array_suffix(return_type_tok)
+                if err:
+                    return res.failure(err)
+                if TYPE_MAP.get(return_type_tok.value) is None:
                     return res.failure(
                         B_SharpSyntaxError(
                             return_type_tok.pos_start,
@@ -1074,6 +1306,22 @@ class Interpreter:
             Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
         )
 
+    def visit_ListNode(self, node, context):
+        res = RunTimeResult()
+        list_of_elements = []
+
+        for element_node in node.list_of_expressions:
+            list_of_elements.append(res.register(self.visit(element_node, context)))
+
+            if res.error:
+                return res
+
+        return res.success(
+            List(list_of_elements)
+            .set_context(context)
+            .set_pos(node.pos_start, node.pos_end)
+        )
+
     def visit_BinaryOpNode(self, node, context):
         res = RunTimeResult()
         left = res.register(self.visit(node.left_node, context))
@@ -1098,6 +1346,8 @@ class Interpreter:
             result, error = left.subtraction(right)
         elif node.op_token.type == TOKEN_MUL:
             result, error = left.multiplication(right)
+            if error and hasattr(right, "_reversed_multiplication"):
+                result, error = right._reversed_multiplication(left)
         elif node.op_token.type == TOKEN_DIV:
             result, error = left.division(right)
         elif node.op_token.type == TOKEN_IDIV:
@@ -1221,7 +1471,20 @@ class Interpreter:
 
         data_type_class = None
         if node.data_type:
-            data_type_class = TYPE_MAP.get(node.data_type.value.lower())
+            data_type_class = TYPE_MAP.get(node.data_type.value)
+
+        if (
+            data_type_class
+            and issubclass(data_type_class, Array)
+            and isinstance(value, List)
+        ):
+            array_class = TYPE_MAP.get(node.data_type.value)
+            if array_class:
+                value = array_class(value.list_of_elements)
+                value.set_context(context).set_pos(node.pos_start, node.pos_end)
+                err = value._validate_all()
+                if err:
+                    return res.failure(err)
 
         val, error = context.variables.set_pos(node.pos_start, node.pos_end).define(
             name=var_name,
@@ -1246,7 +1509,20 @@ class Interpreter:
 
         data_type_class = None
         if node.data_type:
-            data_type_class = TYPE_MAP.get(node.data_type.value.lower())
+            data_type_class = TYPE_MAP.get(node.data_type.value)
+
+        if (
+            data_type_class
+            and issubclass(data_type_class, Array)
+            and isinstance(value, List)
+        ):
+            array_class = TYPE_MAP.get(node.data_type.value)
+            if array_class:
+                value = array_class(value.list_of_elements)
+                value.set_context(context).set_pos(node.pos_start, node.pos_end)
+                err = value._validate_all()
+                if err:
+                    return res.failure(err)
 
         last_val = value
         for name_tok in node.names:
@@ -1272,6 +1548,26 @@ class Interpreter:
         value = res.register(self.visit(node.value, context))
         if res.error:
             return res
+
+        declared_type, err = context.variables.get_type(
+            var_name, node.pos_start, node.pos_end
+        )
+        if err:
+            return res.failure(err)
+
+        if (
+            declared_type
+            and issubclass(declared_type, Array)
+            and isinstance(value, List)
+        ):
+            for key, arr_class in TYPE_MAP.items():
+                if arr_class is declared_type:
+                    value = arr_class(value.list_of_elements)
+                    value.set_context(context).set_pos(node.pos_start, node.pos_end)
+                    val_err = value._validate_all()
+                    if val_err:
+                        return res.failure(val_err)
+                    break
 
         val, error = context.variables.set_pos(node.pos_start, node.pos_end).assign(
             name=var_name, value=value
@@ -1392,7 +1688,7 @@ class Interpreter:
             elements.append(val)
 
         return res.success(
-            elements[-1] if len(elements) > 0 else Empty().set_context(context)
+            List(elements).set_context(context).set_pos(node.pos_start, node.pos_end)
         )
 
     def visit_ForNode(self, node, context):
@@ -1426,7 +1722,7 @@ class Interpreter:
                 return res
 
         return res.success(
-            elements[-1] if len(elements) > 0 else Empty().set_context(context)
+            List(elements).set_context(context).set_pos(node.pos_start, node.pos_end)
         )
 
     def visit_FunctionDefNode(self, node, context):
@@ -1464,7 +1760,7 @@ class Interpreter:
         if res.error:
             return res
 
-        if not isinstance(value_to_call, Function):
+        if not isinstance(value_to_call, (Function, BuiltinFunction)):
             return res.failure(
                 RunTimeError(
                     node.pos_start,
@@ -1479,6 +1775,17 @@ class Interpreter:
             if res.error:
                 return res
             args.append(arg_val)
+
+        if isinstance(value_to_call, BuiltinFunction):
+            value_to_call.set_context(context)
+            value_to_call.pos_start = node.pos_start
+            value_to_call.pos_end = node.pos_end
+            result = res.register(
+                value_to_call.execute(args, self, call_pos_start=node.pos_start, call_pos_end=node.pos_end)
+            )
+            if res.error:
+                return res
+            return res.success(result)
 
         if self.current_call_depth >= self.max_call_depth:
             return res.failure(
@@ -1526,3 +1833,315 @@ class Interpreter:
             )
 
         return res.success_return(return_val)
+
+    def visit_PropertyAccessNode(self, node, context):
+        res = RunTimeResult()
+        obj = res.register(self.visit(node.node, context))
+        if res.error:
+            return res
+
+        _property = node.property_name_token.value
+        pos = node.pos_start, node.pos_end
+
+        if isinstance(obj, (List, Array)):
+            if _property == "length":
+                return res.success(
+                    Number(len(obj.list_of_elements)).set_context(context).set_pos(*pos)
+                )
+            if _property == "type":
+                return res.success(
+                    String(obj.__class__.__name__).set_context(context).set_pos(*pos)
+                )
+
+        if isinstance(obj, String):
+            if _property == "size":
+                return res.success(
+                    Number(len(obj.value)).set_context(context).set_pos(*pos)
+                )
+            if _property == "type":
+                return res.success(
+                    String("String").set_context(context).set_pos(*pos)
+                )
+
+        if isinstance(obj, Number):
+            if _property == "type":
+                return res.success(
+                    String("Number").set_context(context).set_pos(*pos)
+                )
+
+        if isinstance(obj, Boolean):
+            if _property == "type":
+                return res.success(
+                    String("Bool").set_context(context).set_pos(*pos)
+                )
+
+        if isinstance(obj, Empty):
+            if _property == "type":
+                return res.success(
+                    String("Empty").set_context(context).set_pos(*pos)
+                )
+
+        return res.failure(
+            RunTimeError(
+                node.pos_start,
+                node.pos_end,
+                f"Unexpected property {_property} for {obj.__class__.__name__}",
+            )
+        )
+
+    def visit_IndexAccessNode(self, node, context):
+        res = RunTimeResult()
+        obj = res.register(self.visit(node.node, context))
+        if res.error:
+            return res
+
+        index = res.register(self.visit(node.index_node, context))
+        if res.error:
+            return res
+
+        if isinstance(obj, (List, Array)):
+            if not isinstance(index, Number):
+                return res.failure(
+                    RunTimeError(
+                        node.pos_start,
+                        node.pos_end,
+                        "Index is expected to be of type Number.",
+                    )
+                )
+
+            i = int(index.value)
+            if i < 0:
+                i += len(obj.list_of_elements)
+            if i < 0 or i >= len(obj.list_of_elements):
+                return res.failure(
+                    RunTimeError(
+                        node.pos_start, node.pos_end, "Index is out of bounds."
+                    )
+                )
+
+            element = obj.list_of_elements[i]
+            if hasattr(element, 'copy') and isinstance(element, (List, Array)):
+                element = element.copy()
+            return res.success(
+                element.set_context(context).set_pos(node.pos_start, node.pos_end)
+            )
+
+        if isinstance(obj, String):
+            if not isinstance(index, Number):
+                return res.failure(
+                    RunTimeError(
+                        node.pos_start,
+                        node.pos_end,
+                        "Index is expected to be of type Number.",
+                    )
+                )
+            i = int(index.value)
+            if i < 0:
+                i += len(obj.value)
+            if i < 0 or i >= len(obj.value):
+                return res.failure(
+                    RunTimeError(
+                        node.pos_start, node.pos_end, "Index is out of bounds."
+                    )
+                )
+            return res.success(
+                String(obj.value[i]).set_context(context).set_pos(node.pos_start, node.pos_end)
+            )
+
+        return res.failure(
+            RunTimeError(node.pos_start, node.pos_end, "Given type is not indexable.")
+        )
+
+    def visit_SliceNode(self, node, context):
+        res = RunTimeResult()
+        obj = res.register(self.visit(node.node, context))
+        if res.error:
+            return res
+
+        if isinstance(obj, (List, Array)):
+            length = len(obj.list_of_elements)
+            if node.start_node is not None:
+                start_val = res.register(self.visit(node.start_node, context))
+                if res.error:
+                    return res
+                if not isinstance(start_val, Number):
+                    return res.failure(RunTimeError(node.pos_start, node.pos_end, "Slice start must be a Number."))
+                start = int(start_val.value)
+            else:
+                start = 0
+
+            if node.end_node is not None:
+                end_val = res.register(self.visit(node.end_node, context))
+                if res.error:
+                    return res
+                if not isinstance(end_val, Number):
+                    return res.failure(RunTimeError(node.pos_start, node.pos_end, "Slice end must be a Number."))
+                end = int(end_val.value)
+            else:
+                end = length
+
+            sliced = obj.list_of_elements[start:end]
+            return res.success(
+                List(sliced).set_context(context).set_pos(node.pos_start, node.pos_end)
+            )
+
+        if isinstance(obj, String):
+            length = len(obj.value)
+            if node.start_node is not None:
+                start_val = res.register(self.visit(node.start_node, context))
+                if res.error:
+                    return res
+                if not isinstance(start_val, Number):
+                    return res.failure(RunTimeError(node.pos_start, node.pos_end, "Slice start must be a Number."))
+                start = int(start_val.value)
+            else:
+                start = 0
+
+            if node.end_node is not None:
+                end_val = res.register(self.visit(node.end_node, context))
+                if res.error:
+                    return res
+                if not isinstance(end_val, Number):
+                    return res.failure(RunTimeError(node.pos_start, node.pos_end, "Slice end must be a Number."))
+                end = int(end_val.value)
+            else:
+                end = length
+
+            return res.success(
+                String(obj.value[start:end]).set_context(context).set_pos(node.pos_start, node.pos_end)
+            )
+
+        return res.failure(
+            RunTimeError(node.pos_start, node.pos_end, "Cannot slice this type.")
+        )
+
+    def visit_MethodCallNode(self, node, context):
+        res = RunTimeResult()
+        obj = res.register(self.visit(node.object_node, context))
+        if res.error:
+            return res
+
+        method_name = node.method_name_tok.value
+        args = []
+        for arg in node.arg_nodes:
+            arg_val = res.register(self.visit(arg, context))
+            if res.error:
+                return res
+            args.append(arg_val)
+
+        if isinstance(obj, (List, Array)):
+            if method_name == "push":
+                return self._list_push(obj, args, node, context)
+            elif method_name == "drop":
+                return self._list_drop(obj, args, node, context)
+            elif method_name == "delete":
+                return self._list_delete(obj, args, node, context)
+
+        return res.failure(
+            RunTimeError(
+                node.pos_start,
+                node.pos_end,
+                f"'{method_name}' is not a method of {obj.__class__.__name__}",
+            )
+        )
+
+    def _list_push(self, obj, args, node, context):
+        res = RunTimeResult()
+        if len(args) < 1 or len(args) > 2:
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"'push' expects 1 or 2 arguments (element, [index]), got {len(args)}.",
+                )
+            )
+        element = args[0]
+        index = int(args[1].value) if len(args) == 2 else None
+        if index is not None:
+            if not isinstance(args[1], Number):
+                return res.failure(
+                    RunTimeError(node.pos_start, node.pos_end, "Index must be a Number.")
+                )
+            if index < 0 or index > len(obj.list_of_elements):
+                return res.failure(
+                    RunTimeError(node.pos_start, node.pos_end, "Index out of bounds.")
+                )
+
+        if isinstance(obj, Array):
+            err = obj._validate_element(element)
+            if err:
+                return res.failure(err)
+
+        new_elements = obj.list_of_elements.copy()
+        if index is None:
+            new_elements.append(element)
+        else:
+            new_elements.insert(index, element)
+
+        if isinstance(obj, Array):
+            result = obj._new_array(new_elements)
+        else:
+            result = List(new_elements)
+
+        return res.success(result.set_context(context).set_pos(node.pos_start, node.pos_end))
+
+    def _list_drop(self, obj, args, node, context):
+        res = RunTimeResult()
+        if len(args) != 1:
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"'drop' expects 1 argument (index), got {len(args)}.",
+                )
+            )
+        if not isinstance(args[0], Number):
+            return res.failure(
+                RunTimeError(node.pos_start, node.pos_end, "Index must be a Number.")
+            )
+        index = int(args[0].value)
+        if index < 0 or index >= len(obj.list_of_elements):
+            return res.failure(
+                RunTimeError(node.pos_start, node.pos_end, "Index out of bounds.")
+            )
+
+        new_elements = obj.list_of_elements.copy()
+        del new_elements[index]
+
+        if isinstance(obj, Array):
+            result = obj._new_array(new_elements)
+        else:
+            result = List(new_elements)
+
+        return res.success(result.set_context(context).set_pos(node.pos_start, node.pos_end))
+
+    def _list_delete(self, obj, args, node, context):
+        res = RunTimeResult()
+        if len(args) != 2:
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"'delete' expects 2 arguments (first, last), got {len(args)}.",
+                )
+            )
+        if not isinstance(args[0], Number) or not isinstance(args[1], Number):
+            return res.failure(
+                RunTimeError(node.pos_start, node.pos_end, "Both indices must be Numbers.")
+            )
+        start = int(args[0].value)
+        end = int(args[1].value)
+        if start < 0 or end > len(obj.list_of_elements) or start > end:
+            return res.failure(
+                RunTimeError(node.pos_start, node.pos_end, "Invalid range for delete.")
+            )
+
+        new_elements = obj.list_of_elements.copy()
+        del new_elements[start:end]
+
+        if isinstance(obj, Array):
+            result = obj._new_array(new_elements)
+        else:
+            result = List(new_elements)
+
+        return res.success(result.set_context(context).set_pos(node.pos_start, node.pos_end))

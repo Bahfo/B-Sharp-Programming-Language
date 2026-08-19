@@ -42,6 +42,15 @@ TOKEN_LCURLY = "LCURLY"
 TOKEN_RCURLY = "RCURLY"
 # Strings
 TOKEN_STRING = "STRING"
+# Lists
+TOKEN_LBRACKET = "LBRACKET"
+TOKEN_RBRACKET = "RBRACKET"
+# Comments
+TOKEN_COMMENT = "TOKEN_COMMENT"
+TOKEN_COMMENT_MULTILINE = "START_COMMENT_MULTILINE"
+# Dot Notations
+TOKEN_DOT = "TOKEN_DOT"
+TOKEN_DOTDOT = "TOKEN_DOTDOT"
 
 # All Keywords
 KEYWORDS = [
@@ -52,17 +61,29 @@ KEYWORDS = [
     "for",
     "and",
     "not",
+    "Bool",
+    "List",
     "else",
     "elif",
     "then",
     "none",
     "true",
     "false",
+    "using",
     "const",
     "while",
     "Empty",
     "Number",
     "String",
     "return",
-    "Boolean",
+    "function",
 ]
+
+# Colors
+RESET = "\033[0m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
+RED = "\033[31m"
+BOLD_RED = "\033[1;31m"
+BLUE = "\033[34m"
+CYAN = "\033[36m"

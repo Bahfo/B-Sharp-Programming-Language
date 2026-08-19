@@ -1,0 +1,18 @@
+// (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved.
+// Module for testing B-Sharp newest features.
+
+fn get_list_size_then_return(y: Number, x: List) -> List {
+    // This function takes the list, gets its size, then 
+    // it multiplies the size by a number then multiplies
+    // that by the list (element-wise).
+
+    var length_of_list : Number = x.length  ;
+    var result = y * length_of_list;
+
+    return result * x;
+}
+
+writeln(get_list_size_then_return(2, [1, 2, 3, 4]))
+
+var x = readln("What is your name? ");
+writeln("Hello, " + x + "!");

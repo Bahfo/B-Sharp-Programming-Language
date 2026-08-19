@@ -47,6 +47,12 @@ class Lexer:
         else:
             self.current_char = None
 
+    def peek(self, offset=1):
+        peek_index = self.pos.index + offset
+        if peek_index < len(self.text):
+            return self.text[peek_index]
+        return None
+
     def numberize(self):
         number_str = ""
         dot_count = 0
@@ -60,6 +66,8 @@ class Lexer:
                         self.pos,
                         "A number literal cannot contain more than one decimal point.",
                     )
+                if self.peek() not in DIGITS:
+                    break
                 dot_count += 1
                 number_str += "."
             else:
@@ -178,6 +186,18 @@ class Lexer:
         self.forward()
         return Token(TOKEN_STRING, string_val, pos_start, self.pos), None
 
+    def commentize(self, comment_type: str):
+        if comment_type == "single":
+            while self.current_char is not None and self.current_char != "\n":
+                self.forward()
+        elif comment_type == "multi":
+            while self.current_char is not None:
+                if self.current_char == "*" and self.peek() == "/":
+                    self.forward()  # skip '*'
+                    self.forward()  # skip '/'
+                    return
+                self.forward()
+
     def tokenize(self):
         tokens = []
 
@@ -190,6 +210,14 @@ class Lexer:
                 )
                 tokens.append(Token(token_type, pos_start=self.pos))
                 self.forward()
+            elif self.current_char == "/" and self.peek() == "/":
+                self.forward()  # skip first '/'
+                self.forward()  # skip second '/'
+                self.commentize("single")
+            elif self.current_char == "/" and self.peek() == "*":
+                self.forward()  # skip first '/'
+                self.forward()  # skip '*'
+                self.commentize("multi")
             elif self.current_char == "\r":
                 self.forward()  # Skip carriage return
             elif self.current_char == "{":
@@ -198,6 +226,14 @@ class Lexer:
             elif self.current_char == "}":
                 tokens.append(Token(TOKEN_RCURLY, pos_start=self.pos))
                 self.forward()
+            elif self.current_char == ".":
+                if self.peek() == ".":
+                    tokens.append(Token(TOKEN_DOTDOT, pos_start=self.pos))
+                    self.forward()
+                    self.forward()
+                else:
+                    tokens.append(Token(TOKEN_DOT, pos_start=self.pos))
+                    self.forward()
             elif self.current_char in LETTERS:
                 tokens.append(self.identifiers())
             elif self.current_char in DIGITS:
@@ -234,6 +270,9 @@ class Lexer:
                     tokens.append(
                         Token(TOKEN_MINUS, pos_start=pos_start, pos_end=self.pos)
                     )
+            elif self.current_char == "%":
+                self.forward()
+                tokens.append(Token(TOKEN_IDIV, pos_start=pos_start, pos_end=self.pos))
             elif self.current_char == "*":
                 pos_start = self.pos.copy()
                 self.forward()
@@ -247,15 +286,7 @@ class Lexer:
             elif self.current_char == "/":
                 pos_start = self.pos.copy()
                 self.forward()
-                if self.current_char == "/":
-                    self.forward()
-                    tokens.append(
-                        Token(TOKEN_IDIV, pos_start=pos_start, pos_end=self.pos)
-                    )
-                else:
-                    tokens.append(
-                        Token(TOKEN_DIV, pos_start=pos_start, pos_end=self.pos)
-                    )
+                tokens.append(Token(TOKEN_DIV, pos_start=pos_start, pos_end=self.pos))
             elif self.current_char == "(":
                 tokens.append(Token(TOKEN_LPAREN, pos_start=self.pos))
                 self.forward()
@@ -283,6 +314,12 @@ class Lexer:
                 tokens.append(self.make_token_greater_than())
             elif self.current_char == "<":
                 tokens.append(self.make_token_less_than())
+            elif self.current_char == "[":
+                tokens.append(Token(TOKEN_LBRACKET, pos_start=self.pos))
+                self.forward()
+            elif self.current_char == "]":
+                tokens.append(Token(TOKEN_RBRACKET, pos_start=self.pos))
+                self.forward()
             elif self.current_char in ('"', "'"):
                 token, error = self.stringnize(self.current_char)
                 if error:

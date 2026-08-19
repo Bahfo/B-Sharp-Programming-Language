@@ -286,7 +286,7 @@ class TestTracebackSafety(unittest.TestCase):
         self.assertIsNotNone(err)
         rendered = err.as_string()
         self.assertIsInstance(rendered, str)
-        self.assertIn("Ln:", rendered)
+        self.assertIn("in Line", rendered)
 
     def test_error_after_empty_else_block_does_not_crash(self):
         code = "if 1 == 2 { 1 } else { }\nvar z = 2\nz"
@@ -299,7 +299,7 @@ class TestTracebackSafety(unittest.TestCase):
         val, err = execute_bsharp(code)
         self.assertIsNotNone(err)
         rendered = err.as_string()
-        self.assertIn("Ln: 3", rendered)
+        self.assertIn("in Line 3", rendered)
 
 
 class TestReplRedefinition(unittest.TestCase):

@@ -4,6 +4,7 @@ import os
 from B_Sharp.ASTNodes.parser import Parser, Interpreter
 from B_Sharp.ASTNodes.instances import Context
 from B_Sharp.lexer import Lexer
+from B_Sharp.builtins import register_builtins
 
 
 def run_source(file_name, source_text, context=None):
@@ -13,6 +14,7 @@ def run_source(file_name, source_text, context=None):
 
     if context is None:
         context = Context("<main>")
+        register_builtins(context)
 
     lexer = Lexer(file_name, source_text)
     tokens, error = lexer.tokenize()
