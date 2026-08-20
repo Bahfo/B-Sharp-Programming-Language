@@ -1,0 +1,14 @@
+// initializer file created for B-Sharp programming language.
+
+using "StdLib"
+using "StdLib/FunctionCalls/Caller"
+
+// A function to initialize components of standard library. 
+// Entry point of any B-Sharp project should keep a reference from
+// here. You are free to delete the file if you want. But it is 
+// considered actually a standard B-Sharp way to put all imports
+// inside __init__.bsharp file and call the function initializer 
+// (InitializeComponents). 
+function InitializeComponents() {
+    return;
+}

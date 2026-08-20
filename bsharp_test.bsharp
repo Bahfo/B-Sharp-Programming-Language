@@ -1,18 +1,14 @@
 // (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved.
-// Module for testing B-Sharp newest features.
+// A general B-Sharp file to test code running and errors if any is found.
 
-fn get_list_size_then_return(y: Number, x: List) -> List {
-    // This function takes the list, gets its size, then 
-    // it multiplies the size by a number then multiplies
-    // that by the list (element-wise).
+using "test:add,sub";
 
-    var length_of_list : Number = x.length  ;
-    var result = y * length_of_list;
-
-    return result * x;
+fn test_code_imports() {
+    return;
 }
 
-writeln(get_list_size_then_return(2, [1, 2, 3, 4]))
+test_code_imports();
 
-var x = readln("What is your name? ");
-writeln("Hello, " + x + "!");
+writeln(add(5, 4));
+
+writeln(sub(4, 5));

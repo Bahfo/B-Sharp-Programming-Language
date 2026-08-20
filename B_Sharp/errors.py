@@ -101,3 +101,11 @@ class DoubleFloatingAssignedError(Error):
 
     def __str__(self):
         return self.as_string()
+
+
+class CircularImportError(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, "Circular Import Error.", details)
+
+    def __str__(self):
+        return self.as_string()

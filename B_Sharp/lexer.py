@@ -297,8 +297,13 @@ class Lexer:
                 tokens.append(Token(TOKEN_POWER, pos_start=self.pos))
                 self.forward()
             elif self.current_char == ":":
-                tokens.append(Token(TOKEN_COLON, pos_start=self.pos))
-                self.forward()
+                if self.peek() == ":":
+                    self.forward()
+                    self.forward()
+                    tokens.append(Token(TOKEN_IMPORT_TAKE, pos_start=self.pos))
+                else:
+                    tokens.append(Token(TOKEN_COLON, pos_start=self.pos))
+                    self.forward()
             elif self.current_char == ",":
                 tokens.append(Token(TOKEN_COMMA, pos_start=self.pos))
                 self.forward()

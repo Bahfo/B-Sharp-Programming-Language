@@ -7,4 +7,5 @@ HINTS = {
     "Assigning to Empty Error.": "ensure the variable has a compatible type before assigning",
     "Comparison Syntax Error.": "ensure both operands are of compatible types",
     "Double Floating Assigned Error.": "a number literal can only contain one decimal point",
+    "Circular Import Error.": "remove the circular dependency between the imported files",
 }

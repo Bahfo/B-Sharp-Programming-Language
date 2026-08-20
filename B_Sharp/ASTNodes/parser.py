@@ -1,3 +1,4 @@
+import os
 import sys
 
 from B_Sharp.tokens import *
@@ -129,6 +130,9 @@ class Parser:
 
             return res.success(list_expression)
 
+        elif tok.type == TOKEN_KEYWORD and tok.value == "using":
+            return self.import_module()
+
         return res.failure(
             B_SharpSyntaxError(
                 tok.pos_start,
@@ -136,6 +140,80 @@ class Parser:
                 f"Expected int, float, identifier, '+', '-', '(', or keyword, got '{tok}'",
             )
         )
+
+    def import_module(self):
+        res = ParserResults()
+        pos_start = self.current_token.pos_start.copy()
+
+        if self.current_token.type != TOKEN_KEYWORD:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected 'using' keyword to import a module",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type != TOKEN_STRING:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Module import name is expected to be a valid string file path",
+                )
+            )
+
+        file_path_node = res.register(self.atom())
+        if res.error:
+            return res
+
+        raw_import_str = file_path_node.token.value
+        pos_end = file_path_node.pos_end
+
+        if ":" in raw_import_str:
+            file_path_str, symbols_str = raw_import_str.split(":", 1)
+            symbols = [s.strip() for s in symbols_str.split(",") if s.strip()]
+        else:
+            file_path_str = raw_import_str
+            symbols = None
+
+        resolved = self.resolve_import_path(file_path_str)
+        if resolved is None:
+            return res.failure(
+                RunTimeError(
+                    pos_start,
+                    pos_end,
+                    f"Module '{file_path_str}' cannot be found.",
+                )
+            )
+
+        return res.success(ImportNode(resolved, symbols, pos_start, pos_end))
+
+    def resolve_import_path(self, file_path: str):
+        try:
+            if os.path.isabs(file_path):
+                resolved = os.path.abspath(file_path)
+            else:
+                caller_dir = (
+                    os.path.dirname(os.path.abspath(self.tokens[0].pos_start.file_name))
+                    if self.tokens and self.tokens[0].pos_start
+                    else os.getcwd()
+                )
+                resolved = os.path.abspath(os.path.join(caller_dir, file_path))
+
+            if not os.path.exists(resolved):
+                if not resolved.endswith(".bsharp"):
+                    resolved_with_ext = resolved + ".bsharp"
+                    if os.path.exists(resolved_with_ext):
+                        return resolved_with_ext
+                return None
+
+            return resolved
+        except Exception:
+            return None
 
     def make_list(self):
         res = ParserResults()
@@ -1265,6 +1343,8 @@ class Interpreter:
     def __init__(self, max_call_depth=500):
         self.max_call_depth = max_call_depth
         self.current_call_depth = 0
+        self.loaded_modules = {}
+        self.loading_modules = set()
         if sys.getrecursionlimit() < 10000:
             sys.setrecursionlimit(10000)
 
@@ -1781,7 +1861,9 @@ class Interpreter:
             value_to_call.pos_start = node.pos_start
             value_to_call.pos_end = node.pos_end
             result = res.register(
-                value_to_call.execute(args, self, call_pos_start=node.pos_start, call_pos_end=node.pos_end)
+                value_to_call.execute(
+                    args, self, call_pos_start=node.pos_start, call_pos_end=node.pos_end
+                )
             )
             if res.error:
                 return res
@@ -1859,27 +1941,19 @@ class Interpreter:
                     Number(len(obj.value)).set_context(context).set_pos(*pos)
                 )
             if _property == "type":
-                return res.success(
-                    String("String").set_context(context).set_pos(*pos)
-                )
+                return res.success(String("String").set_context(context).set_pos(*pos))
 
         if isinstance(obj, Number):
             if _property == "type":
-                return res.success(
-                    String("Number").set_context(context).set_pos(*pos)
-                )
+                return res.success(String("Number").set_context(context).set_pos(*pos))
 
         if isinstance(obj, Boolean):
             if _property == "type":
-                return res.success(
-                    String("Bool").set_context(context).set_pos(*pos)
-                )
+                return res.success(String("Bool").set_context(context).set_pos(*pos))
 
         if isinstance(obj, Empty):
             if _property == "type":
-                return res.success(
-                    String("Empty").set_context(context).set_pos(*pos)
-                )
+                return res.success(String("Empty").set_context(context).set_pos(*pos))
 
         return res.failure(
             RunTimeError(
@@ -1920,7 +1994,7 @@ class Interpreter:
                 )
 
             element = obj.list_of_elements[i]
-            if hasattr(element, 'copy') and isinstance(element, (List, Array)):
+            if hasattr(element, "copy") and isinstance(element, (List, Array)):
                 element = element.copy()
             return res.success(
                 element.set_context(context).set_pos(node.pos_start, node.pos_end)
@@ -1945,7 +2019,9 @@ class Interpreter:
                     )
                 )
             return res.success(
-                String(obj.value[i]).set_context(context).set_pos(node.pos_start, node.pos_end)
+                String(obj.value[i])
+                .set_context(context)
+                .set_pos(node.pos_start, node.pos_end)
             )
 
         return res.failure(
@@ -1965,7 +2041,13 @@ class Interpreter:
                 if res.error:
                     return res
                 if not isinstance(start_val, Number):
-                    return res.failure(RunTimeError(node.pos_start, node.pos_end, "Slice start must be a Number."))
+                    return res.failure(
+                        RunTimeError(
+                            node.pos_start,
+                            node.pos_end,
+                            "Slice start must be a Number.",
+                        )
+                    )
                 start = int(start_val.value)
             else:
                 start = 0
@@ -1975,7 +2057,11 @@ class Interpreter:
                 if res.error:
                     return res
                 if not isinstance(end_val, Number):
-                    return res.failure(RunTimeError(node.pos_start, node.pos_end, "Slice end must be a Number."))
+                    return res.failure(
+                        RunTimeError(
+                            node.pos_start, node.pos_end, "Slice end must be a Number."
+                        )
+                    )
                 end = int(end_val.value)
             else:
                 end = length
@@ -1992,7 +2078,13 @@ class Interpreter:
                 if res.error:
                     return res
                 if not isinstance(start_val, Number):
-                    return res.failure(RunTimeError(node.pos_start, node.pos_end, "Slice start must be a Number."))
+                    return res.failure(
+                        RunTimeError(
+                            node.pos_start,
+                            node.pos_end,
+                            "Slice start must be a Number.",
+                        )
+                    )
                 start = int(start_val.value)
             else:
                 start = 0
@@ -2002,13 +2094,19 @@ class Interpreter:
                 if res.error:
                     return res
                 if not isinstance(end_val, Number):
-                    return res.failure(RunTimeError(node.pos_start, node.pos_end, "Slice end must be a Number."))
+                    return res.failure(
+                        RunTimeError(
+                            node.pos_start, node.pos_end, "Slice end must be a Number."
+                        )
+                    )
                 end = int(end_val.value)
             else:
                 end = length
 
             return res.success(
-                String(obj.value[start:end]).set_context(context).set_pos(node.pos_start, node.pos_end)
+                String(obj.value[start:end])
+                .set_context(context)
+                .set_pos(node.pos_start, node.pos_end)
             )
 
         return res.failure(
@@ -2045,6 +2143,112 @@ class Interpreter:
             )
         )
 
+    def visit_ImportNode(self, node, context):
+        res = RunTimeResult()
+        file_path = node.module_to_import
+        symbols_to_import = node.symbols  # None or list of names
+
+        if file_path in self.loading_modules:
+            return res.failure(
+                CircularImportError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"Circular import detected: '{file_path}' is already being loaded.",
+                )
+            )
+
+        if file_path not in self.loaded_modules:
+            if not os.path.exists(file_path):
+                return res.failure(
+                    RunTimeError(
+                        node.pos_start,
+                        node.pos_end,
+                        f"Could not import '{file_path}': File not found.",
+                    )
+                )
+
+            try:
+                with open(file_path, "r") as f:
+                    script = f.read()
+            except Exception as e:
+                return res.failure(
+                    RunTimeError(
+                        node.pos_start,
+                        node.pos_end,
+                        f"Failed to read module '{file_path}': {str(e)}",
+                    )
+                )
+
+            from B_Sharp.lexer import Lexer
+            from B_Sharp.builtins import register_builtins
+
+            lexer = Lexer(file_path, script)
+            tokens, lexer_error = lexer.tokenize()
+            if lexer_error:
+                return res.failure(
+                    RunTimeError(
+                        node.pos_start,
+                        node.pos_end,
+                        f"Failed to tokenize module '{file_path}': {lexer_error}",
+                    )
+                )
+
+            parser = Parser(tokens)
+            ast = parser.parser()
+            if ast.error:
+                return res.failure(
+                    RunTimeError(
+                        node.pos_start,
+                        node.pos_end,
+                        f"Failed to parse module '{file_path}': {ast.error}",
+                    )
+                )
+
+            import_context = Context(file_path, parent=context)
+            register_builtins(import_context)
+
+            self.loading_modules.add(file_path)
+
+            interpreter = Interpreter()
+            interpreter.loaded_modules = self.loaded_modules
+            interpreter.loading_modules = self.loading_modules
+
+            try:
+                result = interpreter.visit(ast.node, import_context)
+            finally:
+                self.loading_modules.discard(file_path)
+
+            if result.error:
+                return res.failure(result.error)
+
+            self.loaded_modules[file_path] = import_context
+
+        module_context = self.loaded_modules[file_path]
+        builtin_names = set(context.variables.variables.keys())
+
+        if symbols_to_import is not None:
+            for symbol in symbols_to_import:
+                if symbol in module_context.variables.variables:
+                    context.variables.variables[symbol] = (
+                        module_context.variables.variables[symbol]
+                    )
+                else:
+                    return res.failure(
+                        RunTimeError(
+                            node.pos_start,
+                            node.pos_end,
+                            f"Symbol '{symbol}' not found in module '{file_path}'.",
+                        )
+                    )
+        else:
+            for name, entry in module_context.variables.variables.items():
+                if name not in builtin_names:
+                    context.variables.variables[name] = entry
+
+        return res.success(
+            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
+
     def _list_push(self, obj, args, node, context):
         res = RunTimeResult()
         if len(args) < 1 or len(args) > 2:
@@ -2060,7 +2264,9 @@ class Interpreter:
         if index is not None:
             if not isinstance(args[1], Number):
                 return res.failure(
-                    RunTimeError(node.pos_start, node.pos_end, "Index must be a Number.")
+                    RunTimeError(
+                        node.pos_start, node.pos_end, "Index must be a Number."
+                    )
                 )
             if index < 0 or index > len(obj.list_of_elements):
                 return res.failure(
@@ -2083,7 +2289,9 @@ class Interpreter:
         else:
             result = List(new_elements)
 
-        return res.success(result.set_context(context).set_pos(node.pos_start, node.pos_end))
+        return res.success(
+            result.set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
 
     def _list_drop(self, obj, args, node, context):
         res = RunTimeResult()
@@ -2113,7 +2321,9 @@ class Interpreter:
         else:
             result = List(new_elements)
 
-        return res.success(result.set_context(context).set_pos(node.pos_start, node.pos_end))
+        return res.success(
+            result.set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
 
     def _list_delete(self, obj, args, node, context):
         res = RunTimeResult()
@@ -2127,7 +2337,9 @@ class Interpreter:
             )
         if not isinstance(args[0], Number) or not isinstance(args[1], Number):
             return res.failure(
-                RunTimeError(node.pos_start, node.pos_end, "Both indices must be Numbers.")
+                RunTimeError(
+                    node.pos_start, node.pos_end, "Both indices must be Numbers."
+                )
             )
         start = int(args[0].value)
         end = int(args[1].value)
@@ -2144,4 +2356,6 @@ class Interpreter:
         else:
             result = List(new_elements)
 
-        return res.success(result.set_context(context).set_pos(node.pos_start, node.pos_end))
+        return res.success(
+            result.set_context(context).set_pos(node.pos_start, node.pos_end)
+        )

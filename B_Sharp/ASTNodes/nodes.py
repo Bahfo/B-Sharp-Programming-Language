@@ -298,4 +298,14 @@ class MethodCallNode:
         self.method_name_tok = method_name_tok
         self.arg_nodes = arg_nodes
         self.pos_start = object_node.pos_start
-        self.pos_end = pos_end or (arg_nodes[-1].pos_end if arg_nodes else method_name_tok.pos_end)
+        self.pos_end = pos_end or (
+            arg_nodes[-1].pos_end if arg_nodes else method_name_tok.pos_end
+        )
+
+
+class ImportNode:
+    def __init__(self, module_to_import, symbols, pos_start, pos_end=None):
+        self.module_to_import = module_to_import
+        self.pos_start = pos_start
+        self.symbols = symbols
+        self.pos_end = pos_end

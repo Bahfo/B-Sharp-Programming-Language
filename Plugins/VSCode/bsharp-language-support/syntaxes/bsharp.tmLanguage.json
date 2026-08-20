@@ -42,11 +42,15 @@
       "patterns": [
         {
           "name": "keyword.control.bsharp",
-          "match": "\\b(if|elif|else|then|for|while)\\b"
+          "match": "\\b(if|elif|else|then|for|while|using)\\b"
         },
         {
           "name": "keyword.operator.logical.bsharp",
           "match": "\\b(and|or|not)\\b"
+        },
+        {
+          "name": "keyword.type.function.bsharp",
+          "match": "\\b(fn|function)\\b"
         },
         {
           "name": "storage.type.variable.bsharp",
@@ -58,7 +62,7 @@
       "patterns": [
         {
           "name": "entity.name.type.bsharp",
-          "match": "\\b(Number|String|Boolean|Empty)\\b"
+          "match": "\\b(Number|String|Bool|Empty)\\b"
         }
       ]
     },
