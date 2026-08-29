@@ -12,3 +12,7 @@ test_code_imports();
 writeln(add(5, 4));
 
 writeln(sub(4, 5));
+
+var x : Inf = inf;
+
+writeln(x)

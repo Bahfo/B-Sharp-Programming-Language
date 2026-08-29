@@ -105,21 +105,42 @@ class TestDivisionSemantics(unittest.TestCase):
         self.assertIn("Unexpected type", err.details)
 
     def test_integer_division(self):
-        val, err = execute_bsharp("var x = 7 // 2\nx")
+        val, err = execute_bsharp("var x = 7 % 2\nx")
         self.assertIsNone(err)
         self.assertEqual(val.value, 3)
         self.assertIsInstance(val.value, int)
 
-    def test_integer_division_of_float(self):
-        val, err = execute_bsharp("var x = 8.0 // 3\nx")
+    def test_integer_division_truncates_toward_zero(self):
+        val, err = execute_bsharp("var x = -7 % 2\nx")
         self.assertIsNone(err)
-        self.assertEqual(val.value, 2)
-        self.assertIsInstance(val.value, int)
+        self.assertEqual(val.value, -3)
+
+    def test_integer_division_requires_integers(self):
+        val, err = execute_bsharp("var x = 8.0 % 3")
+        self.assertIsNotNone(err)
+        self.assertIn("integer", err.details)
 
     def test_integer_division_by_zero(self):
-        val, err = execute_bsharp("var x = 7 // 0")
+        val, err = execute_bsharp("var x = 7 % 0")
         self.assertIsNotNone(err)
         self.assertIn("division by zero", err.details.lower())
+
+    def test_modulo_semantics(self):
+        cases = [("7 ~ 2", 1), ("-7 ~ 2", -1), ("7 ~ -2", 1)]
+        for src, expected in cases:
+            val, err = execute_bsharp(f"var x = {src}\nx")
+            self.assertIsNone(err, src)
+            self.assertEqual(val.value, expected, src)
+
+    def test_modulo_requires_integers(self):
+        val, err = execute_bsharp("var x = 7.5 ~ 2")
+        self.assertIsNotNone(err)
+        self.assertIn("integer", err.details)
+
+    def test_modulo_by_zero(self):
+        val, err = execute_bsharp("var x = 7 ~ 0")
+        self.assertIsNotNone(err)
+        self.assertIn("modulo by zero", err.details.lower())
 
     def test_power_zero_negative_reports_division(self):
         val, err = execute_bsharp("var x = 0 ^ -1")
@@ -249,7 +270,7 @@ class TestEmptyOperatorEdges(unittest.TestCase):
         code = "var e\n-e"
         val, err = execute_bsharp(code)
         self.assertIsNotNone(err)
-        self.assertIn("Unexpected type", err.details)
+        self.assertIn("cannot negate", err.details)
 
     def test_empty_addition_is_error_not_crash(self):
         code = "var e\ne + 5"
@@ -300,37 +321,6 @@ class TestTracebackSafety(unittest.TestCase):
         self.assertIsNotNone(err)
         rendered = err.as_string()
         self.assertIn("in Line 3", rendered)
-
-
-class TestReplRedefinition(unittest.TestCase):
-    def test_redeclare_var_becomes_reassignment(self):
-        from bsharp import run_source
-
-        context = Context("<repl>", redefine=True)
-        value, error = run_source("<repl>", "var a = 1", context)
-        self.assertIsNone(error)
-        value, error = run_source("<repl>", "var a = 2", context)
-        self.assertIsNone(error)
-
-        val, err = context.variables.get("a")
-        self.assertIsNone(err)
-        self.assertEqual(val.value, 2)
-
-    def test_const_still_protected_in_repl(self):
-        from bsharp import run_source
-
-        context = Context("<repl>", redefine=True)
-        run_source("<repl>", "const c = 5", context)
-        value, error = run_source("<repl>", "const c = 6", context)
-        self.assertIsNotNone(error)
-
-    def test_typed_var_redeclaration_validates_type(self):
-        from bsharp import run_source
-
-        context = Context("<repl>", redefine=True)
-        run_source("<repl>", "var n : Number = 1", context)
-        value, error = run_source("<repl>", 'var n = "text"', context)
-        self.assertIsNotNone(error)
 
 
 class TestThreadedExecutionSafety(unittest.TestCase):

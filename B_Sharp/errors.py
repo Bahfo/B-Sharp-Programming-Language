@@ -109,3 +109,19 @@ class CircularImportError(Error):
 
     def __str__(self):
         return self.as_string()
+
+
+class BSharpMathError(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, "Unexpected Mathematical Error.", details)
+
+    def __str__(self):
+        return self.as_string()
+
+
+class ShadowingError(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, "Shadowing Error", details)
+
+    def __str__(self):
+        return self.as_string()

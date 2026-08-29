@@ -20,6 +20,7 @@ TOKEN_POWER = "POWER"
 TOKEN_INC = "INC"
 TOKEN_DEC = "DEC"
 TOKEN_ARROW = "ARROW"
+TOKEN_MODULO = "MODULO"
 # Keywords
 TOKEN_KEYWORD = "KEYWORD"
 # Variables
@@ -51,7 +52,6 @@ TOKEN_COMMENT_MULTILINE = "START_COMMENT_MULTILINE"
 # Dot Notations
 TOKEN_DOT = "TOKEN_DOT"
 TOKEN_DOTDOT = "TOKEN_DOTDOT"
-TOKEN_IMPORT_TAKE = "TOKEN_IMPORT_TAKE"
 
 # All Keywords
 KEYWORDS = [
@@ -62,6 +62,10 @@ KEYWORDS = [
     "for",
     "and",
     "not",
+    "inf",
+    "nan",
+    "Inf",
+    "NaN",
     "Bool",
     "List",
     "else",

@@ -70,7 +70,8 @@ def run_repl():
     print("B_Sharp Language REPL v1.0")
     print("Type 'exit()' or press Ctrl+C to exit.\n")
 
-    global_context = Context("<main>", redefine=True)
+    global_context = Context("<main>")
+    register_builtins(global_context)
 
     while True:
         try:

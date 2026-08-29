@@ -5,7 +5,41 @@ from B_Sharp.tokens import *
 from B_Sharp.errors import *
 from B_Sharp.ASTNodes.instances import *
 from B_Sharp.ASTNodes.nodes import *
-from B_Sharp.builtins import BuiltinFunction
+from B_Sharp.builtins import BuiltinFunction, register_builtins
+
+
+MAX_PARSE_DEPTH = 350
+_RECERSION_HEADROOM_LIMIT = 8000
+
+_VALID_TYPES_MESSAGE = (
+    "Valid types (uppercase required): "
+    "Bool, Number, String, Empty, List, Inf, NaN, Function, "
+    "Number[], String[], Boolean[], Empty[]."
+)
+
+
+class ParseDepthExceeded(Exception):
+    """Internal signal: source nesting exceeded MAX_PARSE_DEPTH."""
+
+
+def _with_recursion_headroom(fn):
+    """Runs fn with a temporarily raised Python recursion limit.
+
+    The limit is only raised on the outermost call and restored afterwards,
+    so the process-global setting is never permanently mutated.
+    """
+
+    def wrapper(*args, **kwargs):
+        limit = sys.getrecursionlimit()
+        if limit >= _RECERSION_HEADROOM_LIMIT:
+            return fn(*args, **kwargs)
+        sys.setrecursionlimit(_RECERSION_HEADROOM_LIMIT)
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            sys.setrecursionlimit(limit)
+
+    return wrapper
 
 
 class ParserResults:
@@ -40,6 +74,7 @@ class Parser:
         self.tokens = tokens
         self.token_index = -1
         self.current_token = None
+        self.depth = 0
         self.forward()
 
     def forward(self):
@@ -47,6 +82,19 @@ class Parser:
         if self.token_index < len(self.tokens):
             self.current_token = self.tokens[self.token_index]
         return self.current_token
+
+    def _depth_enter(self):
+        self.depth += 1
+        if self.depth > MAX_PARSE_DEPTH:
+            raise ParseDepthExceeded()
+
+    def _depth_exit(self):
+        self.depth -= 1
+
+    def _skip_newlines(self, res):
+        while self.current_token.type in (TOKEN_NEWLINE, TOKEN_SEMICOLON):
+            res.register_forward()
+            self.forward()
 
     ################################################################
     # Grammar Rules
@@ -61,6 +109,13 @@ class Parser:
     ################################################################
 
     def atom(self):
+        self._depth_enter()
+        try:
+            return self._atom()
+        finally:
+            self._depth_exit()
+
+    def _atom(self):
         res = ParserResults()
         tok = self.current_token
 
@@ -95,9 +150,11 @@ class Parser:
         elif tok.type == TOKEN_LPAREN:
             res.register_forward()
             self.forward()
+            self._skip_newlines(res)
             expr = res.register(self.expression())
             if res.error:
                 return res
+            self._skip_newlines(res)
             if self.current_token.type == TOKEN_RPAREN:
                 res.register_forward()
                 self.forward()
@@ -109,6 +166,13 @@ class Parser:
                     "Expected ')'",
                 )
             )
+
+        elif self.current_token.type == TOKEN_LBRACKET:
+            list_expression = res.register(self.make_list())
+            if res.error:
+                return res
+
+            return res.success(list_expression)
 
         elif tok.type == TOKEN_KEYWORD and tok.value in ("true", "false"):
             res.register_forward()
@@ -123,15 +187,11 @@ class Parser:
         elif tok.type == TOKEN_KEYWORD and tok.value == "if":
             return self.if_expression()
 
-        elif tok.type == TOKEN_LBRACKET:
-            list_expression = res.register(self.make_list())
-            if res.error:
-                return res
+        elif tok.type == TOKEN_KEYWORD and tok.value == "nan":
+            return self._not_a_number()
 
-            return res.success(list_expression)
-
-        elif tok.type == TOKEN_KEYWORD and tok.value == "using":
-            return self.import_module()
+        elif tok.type == TOKEN_KEYWORD and tok.value == "inf":
+            return self._infinity_value()
 
         return res.failure(
             B_SharpSyntaxError(
@@ -140,6 +200,26 @@ class Parser:
                 f"Expected int, float, identifier, '+', '-', '(', or keyword, got '{tok}'",
             )
         )
+
+    def _not_a_number(self):
+        res = ParserResults()
+
+        pos_start = self.current_token.pos_start.copy()
+
+        res.register_forward()
+        self.forward()
+
+        return res.success(NaNNode(pos_start))
+
+    def _infinity_value(self):
+        res = ParserResults()
+
+        pos_start = self.current_token.pos_start.copy()
+
+        res.register_forward()
+        self.forward()
+
+        return res.success(InfinityNode(pos_start))
 
     def import_module(self):
         res = ParserResults()
@@ -214,62 +294,6 @@ class Parser:
             return resolved
         except Exception:
             return None
-
-    def make_list(self):
-        res = ParserResults()
-        list_of_elements = []
-        pos_start = self.current_token.pos_start.copy()
-
-        if self.current_token.type != TOKEN_LBRACKET:
-            return res.failure(
-                B_SharpSyntaxError(
-                    self.current_token.pos_start,
-                    self.current_token.pos_end,
-                    "Expected '[' for creating a list.",
-                )
-            )
-
-        res.register_forward()
-        self.forward()
-
-        if self.current_token.type == TOKEN_RBRACKET:
-            res.register_forward()
-            self.forward()
-
-        else:
-            list_of_elements.append(res.register(self.expression()))
-            if res.error:
-                return res.failure(
-                    B_SharpSyntaxError(
-                        self.current_token.pos_start,
-                        self.current_token.pos_end,
-                        f"Expected a valid node inside list. Got unexpected {self.current_token}",
-                    )
-                )
-
-            while self.current_token.type == TOKEN_COMMA:
-                res.register_forward()
-                self.forward()
-
-                list_of_elements.append(res.register(self.expression()))
-                if res.error:
-                    return res
-
-            if self.current_token.type != TOKEN_RBRACKET:
-                return res.failure(
-                    B_SharpSyntaxError(
-                        self.current_token.pos_start,
-                        self.current_token.pos_end,
-                        f"Expected ',' or ']' for a list definition. Got {self.current_token}",
-                    )
-                )
-
-            res.register_forward()
-            self.forward()
-
-            return res.success(
-                ListNode(list_of_elements, pos_start, self.current_token.pos_end.copy())
-            )
 
     def if_expression(self):
         res = ParserResults()
@@ -383,6 +407,13 @@ class Parser:
         return res.success(left)
 
     def unary(self):
+        self._depth_enter()
+        try:
+            return self._unary()
+        finally:
+            self._depth_exit()
+
+    def _unary(self):
         res = ParserResults()
         token = self.current_token
 
@@ -402,17 +433,48 @@ class Parser:
 
         return self.power()
 
+    COMPARISON_TOKENS = (
+        TOKEN_EE,
+        TOKEN_NOT_E,
+        TOKEN_LT,
+        TOKEN_GT,
+        TOKEN_LTE,
+        TOKEN_GTE,
+    )
+
     def factor(self):
-        return self.binary_operation(self.unary, (TOKEN_MUL, TOKEN_DIV, TOKEN_IDIV))
+        return self.binary_operation(
+            self.unary, (TOKEN_MUL, TOKEN_DIV, TOKEN_IDIV, TOKEN_MODULO)
+        )
 
     def term(self):
         return self.binary_operation(self.factor, (TOKEN_PLUS, TOKEN_MINUS))
 
     def comparison(self):
-        return self.binary_operation(
-            self.term,
-            (TOKEN_EE, TOKEN_NOT_E, TOKEN_LT, TOKEN_GT, TOKEN_LTE, TOKEN_GTE),
-        )
+        res = ParserResults()
+        left = res.register(self.term())
+        if res.error:
+            return res
+
+        if self.current_token.type in self.COMPARISON_TOKENS:
+            op_token = self.current_token
+            res.register(self.forward())
+            right = res.register(self.term())
+            if res.error:
+                return res
+            left = BinaryOpNode(left, op_token, right)
+
+            if self.current_token.type in self.COMPARISON_TOKENS:
+                return res.failure(
+                    ComparisonError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "Chained comparisons are not supported. "
+                        "Combine separate comparisons with 'and' or 'or'.",
+                    )
+                )
+
+        return res.success(left)
 
     def and_expression(self):
         return self.binary_operation(self.comparison, ("and",))
@@ -529,7 +591,7 @@ class Parser:
                         type_tok.pos_start,
                         type_tok.pos_end,
                         f"Unknown data type '{type_tok.value}'. "
-                        f"Valid types: number, boolean, complex, string, empty.",
+                        f"{_VALID_TYPES_MESSAGE}",
                     )
                 )
 
@@ -579,6 +641,73 @@ class Parser:
                 )
             )
 
+    def make_list(self):
+        res = ParserResults()
+        list_of_elements = []
+        pos_start = self.current_token.pos_start.copy()
+
+        if self.current_token.type != TOKEN_LBRACKET:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '[' for creating a list.",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        self._skip_newlines(res)
+
+        if self.current_token.type == TOKEN_RBRACKET:
+            res.register_forward()
+            self.forward()
+            return res.success(
+                ListNode(list_of_elements, pos_start, self.current_token.pos_end.copy())
+            )
+
+        else:
+            list_of_elements.append(res.register(self.expression()))
+            if res.error:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        f"Expected a valid node inside list. Got unexpected {self.current_token}",
+                    )
+                )
+
+            while self.current_token.type == TOKEN_COMMA:
+                res.register_forward()
+                self.forward()
+                self._skip_newlines(res)
+
+                if self.current_token.type == TOKEN_RBRACKET:
+                    break
+
+                list_of_elements.append(res.register(self.expression()))
+                if res.error:
+                    return res
+
+            self._skip_newlines(res)
+
+            if self.current_token.type != TOKEN_RBRACKET:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        f"Expected ',' or ']' for a list definition. Got {self.current_token}",
+                    )
+                )
+
+            res.register_forward()
+            self.forward()
+
+            return res.success(
+                ListNode(list_of_elements, pos_start, self.current_token.pos_end.copy())
+            )
+
     def statement(self):
         res = ParserResults()
 
@@ -595,6 +724,8 @@ class Parser:
                 return self.while_expression()
             elif self.current_token.value == "for":
                 return self.for_expression()
+            elif self.current_token.value == "using":
+                return self.import_module()
 
         # Prefix ++i / --i
         if self.current_token.type in (TOKEN_INC, TOKEN_DEC):
@@ -660,8 +791,18 @@ class Parser:
 
         return res.success(StatementsNode(statement_list))
 
+    @_with_recursion_headroom
     def parser(self):
-        res = self.statements()
+        try:
+            res = self.statements()
+        except ParseDepthExceeded:
+            return ParserResults().failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    f"Expression or block nesting exceeds the maximum depth of {MAX_PARSE_DEPTH}.",
+                )
+            )
         if not res.error and self.current_token.type != TOKEN_EOF:
             return res.failure(
                 B_SharpSyntaxError(
@@ -673,6 +814,13 @@ class Parser:
         return res
 
     def block(self):
+        self._depth_enter()
+        try:
+            return self._block()
+        finally:
+            self._depth_exit()
+
+    def _block(self):
         res = ParserResults()
 
         if self.current_token.type != TOKEN_LCURLY:
@@ -927,6 +1075,8 @@ class Parser:
         res.register_forward()
         self.forward()  # skip '['
 
+        self._skip_newlines(res)
+
         start_node = None
         end_node = None
         is_slice = False
@@ -935,6 +1085,7 @@ class Parser:
             is_slice = True
             res.register_forward()
             self.forward()  # skip '..'
+            self._skip_newlines(res)
             end_node = res.register(self.expression())
             if res.error:
                 return res
@@ -943,17 +1094,22 @@ class Parser:
             if res.error:
                 return res
 
+            self._skip_newlines(res)
+
             if self.current_token.type == TOKEN_DOTDOT:
                 is_slice = True
                 start_node = expr
                 res.register_forward()
                 self.forward()  # skip '..'
+                self._skip_newlines(res)
                 if self.current_token.type != TOKEN_RBRACKET:
                     end_node = res.register(self.expression())
                     if res.error:
                         return res
             else:
                 start_node = expr
+
+        self._skip_newlines(res)
 
         if self.current_token.type != TOKEN_RBRACKET:
             return res.failure(
@@ -979,6 +1135,8 @@ class Parser:
         res.register_forward()
         self.forward()  # skip '('
 
+        self._skip_newlines(res)
+
         if self.current_token.type == TOKEN_RPAREN:
             rparen_pos = self.current_token.pos_end
             res.register_forward()
@@ -994,9 +1152,12 @@ class Parser:
         while self.current_token.type == TOKEN_COMMA:
             res.register_forward()
             self.forward()
+            self._skip_newlines(res)
             arg_nodes.append(res.register(self.expression()))
             if res.error:
                 return res
+
+        self._skip_newlines(res)
 
         if self.current_token.type != TOKEN_RPAREN:
             return res.failure(
@@ -1021,6 +1182,8 @@ class Parser:
         res.register_forward()
         self.forward()
 
+        self._skip_newlines(res)
+
         if self.current_token.type == TOKEN_RPAREN:
             rparen_pos = self.current_token.pos_end
             res.register_forward()
@@ -1034,10 +1197,13 @@ class Parser:
         while self.current_token.type == TOKEN_COMMA:
             res.register_forward()
             self.forward()
+            self._skip_newlines(res)
 
             arg_nodes.append(res.register(self.expression()))
             if res.error:
                 return res
+
+        self._skip_newlines(res)
 
         if self.current_token.type != TOKEN_RPAREN:
             return res.failure(
@@ -1106,7 +1272,9 @@ class Parser:
         res.register_forward()
         self.forward()
         arg_nodes = []
-        seen_param_names = set()
+        seen_param_names = {var_name_tok.value}
+
+        self._skip_newlines(res)
 
         if self.current_token.type == TOKEN_RPAREN:
             res.register_forward()
@@ -1141,7 +1309,7 @@ class Parser:
                             B_SharpSyntaxError(
                                 param_type.pos_start,
                                 param_type.pos_end,
-                                f"Unknown data type '{param_type.value}'.",
+                                f"Unknown data type '{param_type.value}'. " + _VALID_TYPES_MESSAGE,
                             )
                         )
                 else:
@@ -1155,6 +1323,14 @@ class Parser:
 
             arg_nodes.append((param_name, param_type))
             if param_name.value in seen_param_names:
+                if param_name.value == var_name_tok.value:
+                    return res.failure(
+                        ShadowingError(
+                            param_name.pos_start,
+                            param_name.pos_end,
+                            f"Parameter name '{param_name.value}' shadows the function name '{var_name_tok.value}'.",
+                        )
+                    )
                 return res.failure(
                     B_SharpSyntaxError(
                         param_name.pos_start,
@@ -1167,6 +1343,7 @@ class Parser:
             while self.current_token.type == TOKEN_COMMA:
                 res.register_forward()
                 self.forward()
+                self._skip_newlines(res)
 
                 if self.current_token.type != TOKEN_IDENTIFIER:
                     return res.failure(
@@ -1197,7 +1374,7 @@ class Parser:
                                 B_SharpSyntaxError(
                                     param_type.pos_start,
                                     param_type.pos_end,
-                                    f"Unknown data type '{param_type.value}'.",
+                                    f"Unknown data type '{param_type.value}'. " + _VALID_TYPES_MESSAGE,
                                 )
                             )
                     else:
@@ -1211,6 +1388,14 @@ class Parser:
 
                 arg_nodes.append((param_name, param_type))
                 if param_name.value in seen_param_names:
+                    if param_name.value == var_name_tok.value:
+                        return res.failure(
+                            ShadowingError(
+                                param_name.pos_start,
+                                param_name.pos_end,
+                                f"Parameter name '{param_name.value}' shadows the function name '{var_name_tok.value}'.",
+                            )
+                        )
                     return res.failure(
                         B_SharpSyntaxError(
                             param_name.pos_start,
@@ -1219,6 +1404,8 @@ class Parser:
                         )
                     )
                 seen_param_names.add(param_name.value)
+
+            self._skip_newlines(res)
 
             if self.current_token.type != TOKEN_RPAREN:
                 return res.failure(
@@ -1249,7 +1436,7 @@ class Parser:
                         B_SharpSyntaxError(
                             return_type_tok.pos_start,
                             return_type_tok.pos_end,
-                            f"Unknown return type '{return_type_tok.value}'.",
+                            f"Unknown return type '{return_type_tok.value}'. " + _VALID_TYPES_MESSAGE,
                         )
                     )
             else:
@@ -1345,8 +1532,6 @@ class Interpreter:
         self.current_call_depth = 0
         self.loaded_modules = {}
         self.loading_modules = set()
-        if sys.getrecursionlimit() < 10000:
-            sys.setrecursionlimit(10000)
 
     def _inside_function(self, context):
         current = context
@@ -1356,13 +1541,20 @@ class Interpreter:
             current = current.parent
         return False
 
+    @_with_recursion_headroom
     def visit(self, node, context):
         method_name = f"visit_{type(node).__name__}"
         method = getattr(self, method_name, self.no_visit_method)
         return method(node, context)
 
     def no_visit_method(self, node, context):
-        raise Exception(f"No visit_{type(node).__name__} method defined")
+        return RunTimeResult().failure(
+            RunTimeError(
+                getattr(node, "pos_start", None),
+                getattr(node, "pos_end", None),
+                f"No visitor implemented for node '{type(node).__name__}'.",
+            )
+        )
 
     ################################################################
     # Visitors
@@ -1446,6 +1638,8 @@ class Interpreter:
             result, error = left.less_than_equal(right)
         elif node.op_token.type == TOKEN_GTE:
             result, error = left.greater_than_equal(right)
+        elif node.op_token.type == TOKEN_MODULO:
+            result, error = left.modulo_division(right)
         else:
             result, error = None, RunTimeError(
                 node.op_token.pos_start,
@@ -1492,7 +1686,19 @@ class Interpreter:
             return res
 
         if node.op_token.type == TOKEN_MINUS:
-            result, error = operand.multiplication(Number(-1))
+            if isinstance(operand, Inf):
+                # Negating infinity flips its sign instead of falling
+                # through the multiplication path.
+                result, error = operand.negated(), None
+            elif isinstance(operand, (Number, List, Array)):
+                result, error = operand.multiplication(Number(-1))
+            else:
+                result, error = None, RunTimeError(
+                    node.op_token.pos_start,
+                    node.pos_end,
+                    f"Unary '-' cannot negate {type(operand).__name__}. "
+                    "Only Number, list/array, and inf values can be negated.",
+                )
         elif node.op_token.type == TOKEN_PLUS:
             result, error = operand, None
         elif node.op_token.type == TOKEN_KEYWORD and node.op_token.value == "not":
@@ -1502,25 +1708,6 @@ class Interpreter:
                 node.op_token.pos_start,
                 node.op_token.pos_end,
                 f"Unknown unary operator '{node.op_token.value}'.",
-            )
-
-        if error:
-            return res.failure(error)
-        return res.success(result.set_pos(node.pos_start, node.pos_end))
-
-    def visit_BinaryNegationNode(self, node, context):
-        res = RunTimeResult()
-        operand = res.register(self.visit(node.node, context))
-        if res.error:
-            return res
-
-        if node.op_token.type == TOKEN_MINUS:
-            result, error = operand.multiplication(Number(-1))
-        else:
-            result, error = None, RunTimeError(
-                node.op_token.pos_start,
-                node.op_token.pos_end,
-                f"Unknown binary negation operator '{node.op_token.value}'.",
             )
 
         if error:
@@ -1607,12 +1794,13 @@ class Interpreter:
         last_val = value
         for name_tok in node.names:
             var_name = name_tok.value
+            assigned_value = value.copy() if isinstance(value, (List, Array)) else value
             val, error = context.variables.set_pos(
                 name_tok.pos_start, name_tok.pos_end
             ).define(
                 name=var_name,
                 data_type=data_type_class,
-                value=value,
+                value=assigned_value,
                 is_const=node.is_const,
             )
             if error:
@@ -1748,7 +1936,6 @@ class Interpreter:
 
     def visit_WhileNode(self, node, context):
         res = RunTimeResult()
-        elements = []
 
         while True:
             cond_val = res.register(self.visit(node.condition_node, context))
@@ -1758,22 +1945,19 @@ class Interpreter:
             if not cond_val.true_():
                 break
 
-            body_context = Context("<while>", context, node.pos_start)
+            body_context = BodyScopeContext(context, context)
             val = res.register(self.visit(node.body_node, body_context))
             if res.error:
                 return res
             if res.func_return_value is not None:
                 return res
 
-            elements.append(val)
-
         return res.success(
-            List(elements).set_context(context).set_pos(node.pos_start, node.pos_end)
+            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
         )
 
     def visit_ForNode(self, node, context):
         res = RunTimeResult()
-        elements = []
 
         loop_context = Context("<for>", context, node.pos_start)
         res.register(self.visit(node.init_node, loop_context))
@@ -1788,21 +1972,19 @@ class Interpreter:
             if not cond_val.true_():
                 break
 
-            body_context = Context("<for>", loop_context, node.pos_start)
+            body_context = BodyScopeContext(loop_context, context)
             val = res.register(self.visit(node.body_node, body_context))
             if res.error:
                 return res
             if res.func_return_value is not None:
                 return res
 
-            elements.append(val)
-
             res.register(self.visit(node.update_node, loop_context))
             if res.error:
                 return res
 
         return res.success(
-            List(elements).set_context(context).set_pos(node.pos_start, node.pos_end)
+            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
         )
 
     def visit_FunctionDefNode(self, node, context):
@@ -1925,41 +2107,42 @@ class Interpreter:
         _property = node.property_name_token.value
         pos = node.pos_start, node.pos_end
 
-        if isinstance(obj, (List, Array)):
-            if _property == "length":
-                return res.success(
-                    Number(len(obj.list_of_elements)).set_context(context).set_pos(*pos)
-                )
-            if _property == "type":
-                return res.success(
-                    String(obj.__class__.__name__).set_context(context).set_pos(*pos)
-                )
+        # Unified size API: both .length and .size work on every
+        # sized builtin type (String, List, Array).
+        sized_types = (List, Array, String)
+        if isinstance(obj, sized_types) and _property in ("length", "size"):
+            size = (
+                len(obj.value) if isinstance(obj, String) else len(obj.list_of_elements)
+            )
+            return res.success(Number(size).set_context(context).set_pos(*pos))
 
-        if isinstance(obj, String):
-            if _property == "size":
-                return res.success(
-                    Number(len(obj.value)).set_context(context).set_pos(*pos)
-                )
-            if _property == "type":
-                return res.success(String("String").set_context(context).set_pos(*pos))
+        type_names = {
+            List: "List",
+            Array: obj.__class__.__name__,
+            String: "String",
+            Number: "Number",
+            Boolean: "Bool",
+            Empty: "Empty",
+            NaN: "NaN",
+            Inf: "Inf",
+            Function: "Function",
+            BuiltinFunction: "Function",
+        }
+        for value_type, name in type_names.items():
+            if isinstance(obj, value_type):
+                if _property == "type":
+                    return res.success(
+                        String(name).set_context(context).set_pos(*pos)
+                    )
+                break
 
-        if isinstance(obj, Number):
-            if _property == "type":
-                return res.success(String("Number").set_context(context).set_pos(*pos))
-
-        if isinstance(obj, Boolean):
-            if _property == "type":
-                return res.success(String("Bool").set_context(context).set_pos(*pos))
-
-        if isinstance(obj, Empty):
-            if _property == "type":
-                return res.success(String("Empty").set_context(context).set_pos(*pos))
-
+        expected = "'length' or 'size'" if isinstance(obj, sized_types) else "'type'"
         return res.failure(
             RunTimeError(
                 node.pos_start,
                 node.pos_end,
-                f"Unexpected property {_property} for {obj.__class__.__name__}",
+                f"Unexpected property '{_property}' for {obj.__class__.__name__}. "
+                f"Supported properties here: {expected}.",
             )
         )
 
@@ -1974,16 +2157,10 @@ class Interpreter:
             return res
 
         if isinstance(obj, (List, Array)):
-            if not isinstance(index, Number):
-                return res.failure(
-                    RunTimeError(
-                        node.pos_start,
-                        node.pos_end,
-                        "Index is expected to be of type Number.",
-                    )
-                )
+            i, err = self._require_int(index, node)
+            if err:
+                return res.failure(err)
 
-            i = int(index.value)
             if i < 0:
                 i += len(obj.list_of_elements)
             if i < 0 or i >= len(obj.list_of_elements):
@@ -1994,22 +2171,15 @@ class Interpreter:
                 )
 
             element = obj.list_of_elements[i]
-            if hasattr(element, "copy") and isinstance(element, (List, Array)):
-                element = element.copy()
             return res.success(
                 element.set_context(context).set_pos(node.pos_start, node.pos_end)
             )
 
         if isinstance(obj, String):
-            if not isinstance(index, Number):
-                return res.failure(
-                    RunTimeError(
-                        node.pos_start,
-                        node.pos_end,
-                        "Index is expected to be of type Number.",
-                    )
-                )
-            i = int(index.value)
+            i, err = self._require_int(index, node)
+            if err:
+                return res.failure(err)
+
             if i < 0:
                 i += len(obj.value)
             if i < 0 or i >= len(obj.value):
@@ -2028,6 +2198,45 @@ class Interpreter:
             RunTimeError(node.pos_start, node.pos_end, "Given type is not indexable.")
         )
 
+    def _resolve_slice_bounds(self, node, context, res, length):
+        """Evaluates optional slice endpoints.
+
+        Negative values wrap Python-style; out-of-range values clamp into
+        [0, length]. Returns (start, end) or (None, None) after registering
+        a failure on `res`.
+        """
+        start = 0
+        if node.start_node is not None:
+            start_val = res.register(self.visit(node.start_node, context))
+            if res.error:
+                return None, None
+            start, err = self._require_int(start_val, node, "Slice start")
+            if err:
+                res.failure(err)
+                return None, None
+        else:
+            start = 0
+
+        end = length
+        if node.end_node is not None:
+            end_val = res.register(self.visit(node.end_node, context))
+            if res.error:
+                return None, None
+            end, err = self._require_int(end_val, node, "Slice end")
+            if err:
+                res.failure(err)
+                return None, None
+
+        if start < 0:
+            start += length
+        if end < 0:
+            end += length
+        start = max(0, min(start, length))
+        end = max(0, min(end, length))
+        if start > end:
+            start = end
+        return start, end
+
     def visit_SliceNode(self, node, context):
         res = RunTimeResult()
         obj = res.register(self.visit(node.node, context))
@@ -2036,72 +2245,24 @@ class Interpreter:
 
         if isinstance(obj, (List, Array)):
             length = len(obj.list_of_elements)
-            if node.start_node is not None:
-                start_val = res.register(self.visit(node.start_node, context))
-                if res.error:
-                    return res
-                if not isinstance(start_val, Number):
-                    return res.failure(
-                        RunTimeError(
-                            node.pos_start,
-                            node.pos_end,
-                            "Slice start must be a Number.",
-                        )
-                    )
-                start = int(start_val.value)
-            else:
-                start = 0
-
-            if node.end_node is not None:
-                end_val = res.register(self.visit(node.end_node, context))
-                if res.error:
-                    return res
-                if not isinstance(end_val, Number):
-                    return res.failure(
-                        RunTimeError(
-                            node.pos_start, node.pos_end, "Slice end must be a Number."
-                        )
-                    )
-                end = int(end_val.value)
-            else:
-                end = length
+            start, end = self._resolve_slice_bounds(node, context, res, length)
+            if res.error:
+                return res
 
             sliced = obj.list_of_elements[start:end]
+            if isinstance(obj, Array):
+                result = obj._new_array(sliced)
+            else:
+                result = List(sliced)
             return res.success(
-                List(sliced).set_context(context).set_pos(node.pos_start, node.pos_end)
+                result.set_context(context).set_pos(node.pos_start, node.pos_end)
             )
 
         if isinstance(obj, String):
             length = len(obj.value)
-            if node.start_node is not None:
-                start_val = res.register(self.visit(node.start_node, context))
-                if res.error:
-                    return res
-                if not isinstance(start_val, Number):
-                    return res.failure(
-                        RunTimeError(
-                            node.pos_start,
-                            node.pos_end,
-                            "Slice start must be a Number.",
-                        )
-                    )
-                start = int(start_val.value)
-            else:
-                start = 0
-
-            if node.end_node is not None:
-                end_val = res.register(self.visit(node.end_node, context))
-                if res.error:
-                    return res
-                if not isinstance(end_val, Number):
-                    return res.failure(
-                        RunTimeError(
-                            node.pos_start, node.pos_end, "Slice end must be a Number."
-                        )
-                    )
-                end = int(end_val.value)
-            else:
-                end = length
+            start, end = self._resolve_slice_bounds(node, context, res, length)
+            if res.error:
+                return res
 
             return res.success(
                 String(obj.value[start:end])
@@ -2113,35 +2274,101 @@ class Interpreter:
             RunTimeError(node.pos_start, node.pos_end, "Cannot slice this type.")
         )
 
-    def visit_MethodCallNode(self, node, context):
-        res = RunTimeResult()
-        obj = res.register(self.visit(node.object_node, context))
-        if res.error:
-            return res
+    def _load_module(self, node, res, file_path):
+        """Lexes, parses and executes a module exactly once.
 
-        method_name = node.method_name_tok.value
-        args = []
-        for arg in node.arg_nodes:
-            arg_val = res.register(self.visit(arg, context))
-            if res.error:
-                return res
-            args.append(arg_val)
+        Returns the module's root Context (registered in loaded_modules)
+        or None after registering a failure on `res`.
+        """
+        if file_path in self.loaded_modules:
+            return self.loaded_modules[file_path]
 
-        if isinstance(obj, (List, Array)):
-            if method_name == "push":
-                return self._list_push(obj, args, node, context)
-            elif method_name == "drop":
-                return self._list_drop(obj, args, node, context)
-            elif method_name == "delete":
-                return self._list_delete(obj, args, node, context)
-
-        return res.failure(
-            RunTimeError(
-                node.pos_start,
-                node.pos_end,
-                f"'{method_name}' is not a method of {obj.__class__.__name__}",
+        if not os.path.exists(file_path):
+            res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"Could not import '{file_path}': File not found.",
+                )
             )
-        )
+            return None
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                script = f.read()
+        except Exception as e:
+            res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"Failed to read module '{file_path}': {str(e)}",
+                )
+            )
+            return None
+
+        from B_Sharp.lexer import Lexer
+
+        lexer = Lexer(file_path, script)
+        tokens, lexer_error = lexer.tokenize()
+        if lexer_error:
+            res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"Failed to tokenize module '{file_path}': {lexer_error}",
+                )
+            )
+            return None
+
+        module_parser = Parser(tokens)
+        try:
+            ast = module_parser.parser()
+        except ParseDepthExceeded:
+            ast = ParserResults().failure(
+                B_SharpSyntaxError(
+                    tokens[-1].pos_start,
+                    tokens[-1].pos_end,
+                    f"Module '{file_path}' exceeds the maximum nesting depth.",
+                )
+            )
+        if ast.error:
+            res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"Failed to parse module '{file_path}': {ast.error}",
+                )
+            )
+            return None
+
+        # The module gets its own isolated root scope: it can neither see
+        # nor shadow the importer's globals.
+        import_context = Context(file_path)
+        register_builtins(import_context)
+
+        self.loading_modules.add(file_path)
+        interpreter = Interpreter()
+        interpreter.loaded_modules = self.loaded_modules
+        interpreter.loading_modules = self.loading_modules
+        try:
+            result = interpreter.visit(ast.node, import_context)
+        finally:
+            self.loading_modules.discard(file_path)
+
+        if result.error:
+            res.failure(result.error)
+            return None
+
+        self.loaded_modules[file_path] = import_context
+        return import_context
+
+    def _module_exports(self, module_context):
+        """Names exported by a module: everything except builtins."""
+        return {
+            name: entry
+            for name, entry in module_context.variables.variables.items()
+            if not isinstance(entry["value"], BuiltinFunction)
+        }
 
     def visit_ImportNode(self, node, context):
         res = RunTimeResult()
@@ -2157,205 +2384,164 @@ class Interpreter:
                 )
             )
 
-        if file_path not in self.loaded_modules:
-            if not os.path.exists(file_path):
-                return res.failure(
-                    RunTimeError(
-                        node.pos_start,
-                        node.pos_end,
-                        f"Could not import '{file_path}': File not found.",
-                    )
-                )
+        module_context = self._load_module(node, res, file_path)
+        if module_context is None:
+            return res
 
-            try:
-                with open(file_path, "r") as f:
-                    script = f.read()
-            except Exception as e:
-                return res.failure(
-                    RunTimeError(
-                        node.pos_start,
-                        node.pos_end,
-                        f"Failed to read module '{file_path}': {str(e)}",
-                    )
-                )
+        exports = self._module_exports(module_context)
 
-            from B_Sharp.lexer import Lexer
-            from B_Sharp.builtins import register_builtins
-
-            lexer = Lexer(file_path, script)
-            tokens, lexer_error = lexer.tokenize()
-            if lexer_error:
-                return res.failure(
-                    RunTimeError(
-                        node.pos_start,
-                        node.pos_end,
-                        f"Failed to tokenize module '{file_path}': {lexer_error}",
-                    )
-                )
-
-            parser = Parser(tokens)
-            ast = parser.parser()
-            if ast.error:
-                return res.failure(
-                    RunTimeError(
-                        node.pos_start,
-                        node.pos_end,
-                        f"Failed to parse module '{file_path}': {ast.error}",
-                    )
-                )
-
-            import_context = Context(file_path, parent=context)
-            register_builtins(import_context)
-
-            self.loading_modules.add(file_path)
-
-            interpreter = Interpreter()
-            interpreter.loaded_modules = self.loaded_modules
-            interpreter.loading_modules = self.loading_modules
-
-            try:
-                result = interpreter.visit(ast.node, import_context)
-            finally:
-                self.loading_modules.discard(file_path)
-
-            if result.error:
-                return res.failure(result.error)
-
-            self.loaded_modules[file_path] = import_context
-
-        module_context = self.loaded_modules[file_path]
-        builtin_names = set(context.variables.variables.keys())
-
+        # Two-pass: validate every requested symbol before injecting any,
+        # so a failure never leaves partially imported state.
         if symbols_to_import is not None:
-            for symbol in symbols_to_import:
-                if symbol in module_context.variables.variables:
-                    context.variables.variables[symbol] = (
-                        module_context.variables.variables[symbol]
+            missing = [s for s in symbols_to_import if s not in exports]
+            if missing:
+                return res.failure(
+                    RunTimeError(
+                        node.pos_start,
+                        node.pos_end,
+                        f"Symbol(s) {', '.join(repr(s) for s in missing)} "
+                        f"not found in module '{file_path}'.",
                     )
-                else:
-                    return res.failure(
-                        RunTimeError(
-                            node.pos_start,
-                            node.pos_end,
-                            f"Symbol '{symbol}' not found in module '{file_path}'.",
-                        )
-                    )
+                )
+            selected = {s: exports[s] for s in symbols_to_import}
         else:
-            for name, entry in module_context.variables.variables.items():
-                if name not in builtin_names:
-                    context.variables.variables[name] = entry
+            selected = exports
+
+        # Inject copies of the entries through define(), so existing local
+        # variables, consts, and builtins are protected from overwrite and
+        # the importer never shares mutable binding state with the module.
+        for name, entry in selected.items():
+            value = entry["value"]
+            if hasattr(value, "copy") and isinstance(value, (List, Array)):
+                value = value.copy()
+            _, error = context.variables.set_pos(
+                node.pos_start, node.pos_end
+            ).define(
+                name=name,
+                data_type=entry["type"],
+                value=value,
+                is_const=entry["is_const"],
+            )
+            if error:
+                return res.failure(error)
 
         return res.success(
             Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
         )
 
-    def _list_push(self, obj, args, node, context):
+    def visit_NaNNode(self, node, context):
         res = RunTimeResult()
-        if len(args) < 1 or len(args) > 2:
+        return res.success(
+            NaN().set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
+
+    def visit_InfinityNode(self, node, context):
+        return RunTimeResult().success(
+            Inf().set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
+
+    def _require_int(self, value, node, label="Index"):
+        """Converts a runtime Number to a Python int.
+
+        Booleans and floats are rejected; integers pass through.
+        Returns (int, None) or (None, error).
+        """
+        if not isinstance(value, Number) or isinstance(value.value, float):
+            return None, RunTimeError(
+                node.pos_start,
+                node.pos_end,
+                f"{label} must be an integer Number.",
+            )
+        return int(value.value), None
+
+    def visit_MethodCallNode(self, node, context):
+        res = RunTimeResult()
+        obj = res.register(self.visit(node.object_node, context))
+        if res.error:
+            return res
+
+        method_name = node.method_name_tok.value
+        args = []
+        for arg in node.arg_nodes:
+            arg_val = res.register(self.visit(arg, context))
+            if res.error:
+                return res
+            args.append(arg_val)
+
+        if not isinstance(obj, (List, Array)):
             return res.failure(
                 RunTimeError(
                     node.pos_start,
                     node.pos_end,
-                    f"'push' expects 1 or 2 arguments (element, [index]), got {len(args)}.",
+                    f"'{method_name}' is not a method of {obj.__class__.__name__}",
                 )
             )
-        element = args[0]
-        index = int(args[1].value) if len(args) == 2 else None
-        if index is not None:
-            if not isinstance(args[1], Number):
-                return res.failure(
-                    RunTimeError(
-                        node.pos_start, node.pos_end, "Index must be a Number."
-                    )
-                )
-            if index < 0 or index > len(obj.list_of_elements):
-                return res.failure(
-                    RunTimeError(node.pos_start, node.pos_end, "Index out of bounds.")
-                )
 
-        if isinstance(obj, Array):
-            err = obj._validate_element(element)
+        arities = {
+            "push": (1, 2),
+            "append": (1, 1),
+            "swap": (2, 2),
+            "delete": (1, 1),
+            "drop": (2, 2),
+        }
+        if method_name not in arities:
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"'{method_name}' is not a method of {obj.__class__.__name__}. "
+                    "Supported methods: push, append, swap, delete, drop.",
+                )
+            )
+
+        lo, hi = arities[method_name]
+        if not (lo <= len(args) <= hi):
+            expected = str(lo) if lo == hi else f"{lo} to {hi}"
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    f"'{method_name}' expects {expected} argument(s), got {len(args)}.",
+                )
+            )
+
+        # All mutating methods operate on the SAME list/array object.
+        # Only 'drop' returns a value: the extracted slice as a new List.
+        if method_name == "push":
+            index = None
+            if len(args) == 2:
+                index, err = self._require_int(args[1], node)
+                if err:
+                    return res.failure(err)
+            _, error = obj.push(args[0], index)
+        elif method_name == "append":
+            _, error = obj.append(args[0])
+        elif method_name == "swap":
+            index, err = self._require_int(args[1], node)
             if err:
                 return res.failure(err)
+            _, error = obj.swap(args[0], index)
+        elif method_name == "delete":
+            index, err = self._require_int(args[0], node)
+            if err:
+                return res.failure(err)
+            _, error = obj.delete(index)
+        else:  # drop
+            start, err = self._require_int(args[0], node, "Slice start")
+            if err:
+                return res.failure(err)
+            end, err = self._require_int(args[1], node, "Slice end")
+            if err:
+                return res.failure(err)
+            removed, error = obj.drop(start, end)
+            if error:
+                return res.failure(error)
+            return res.success(
+                removed.set_context(context).set_pos(node.pos_start, node.pos_end)
+            )
 
-        new_elements = obj.list_of_elements.copy()
-        if index is None:
-            new_elements.append(element)
-        else:
-            new_elements.insert(index, element)
-
-        if isinstance(obj, Array):
-            result = obj._new_array(new_elements)
-        else:
-            result = List(new_elements)
-
+        if error:
+            return res.failure(error)
         return res.success(
-            result.set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
-
-    def _list_drop(self, obj, args, node, context):
-        res = RunTimeResult()
-        if len(args) != 1:
-            return res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    f"'drop' expects 1 argument (index), got {len(args)}.",
-                )
-            )
-        if not isinstance(args[0], Number):
-            return res.failure(
-                RunTimeError(node.pos_start, node.pos_end, "Index must be a Number.")
-            )
-        index = int(args[0].value)
-        if index < 0 or index >= len(obj.list_of_elements):
-            return res.failure(
-                RunTimeError(node.pos_start, node.pos_end, "Index out of bounds.")
-            )
-
-        new_elements = obj.list_of_elements.copy()
-        del new_elements[index]
-
-        if isinstance(obj, Array):
-            result = obj._new_array(new_elements)
-        else:
-            result = List(new_elements)
-
-        return res.success(
-            result.set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
-
-    def _list_delete(self, obj, args, node, context):
-        res = RunTimeResult()
-        if len(args) != 2:
-            return res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    f"'delete' expects 2 arguments (first, last), got {len(args)}.",
-                )
-            )
-        if not isinstance(args[0], Number) or not isinstance(args[1], Number):
-            return res.failure(
-                RunTimeError(
-                    node.pos_start, node.pos_end, "Both indices must be Numbers."
-                )
-            )
-        start = int(args[0].value)
-        end = int(args[1].value)
-        if start < 0 or end > len(obj.list_of_elements) or start > end:
-            return res.failure(
-                RunTimeError(node.pos_start, node.pos_end, "Invalid range for delete.")
-            )
-
-        new_elements = obj.list_of_elements.copy()
-        del new_elements[start:end]
-
-        if isinstance(obj, Array):
-            result = obj._new_array(new_elements)
-        else:
-            result = List(new_elements)
-
-        return res.success(
-            result.set_context(context).set_pos(node.pos_start, node.pos_end)
+            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
         )

@@ -8,8 +8,125 @@
 
 from B_Sharp.errors import *
 
+import math
 
-class Number:
+
+class Value:
+    """
+    Base class for all B_Sharp runtime values.
+
+    Provides shared infrastructure (set_pos, set_context) and safe default
+    implementations for every operation. Subclasses only override the
+    operations they actually support — undefined operations automatically
+    yield a clean RunTimeError instead of crashing the interpreter.
+    """
+
+    def set_pos(self, pos_start=None, pos_end=None):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        return self
+
+    def set_context(self, context=None):
+        self.context = context
+        return self
+
+    def _to_number(self, other):
+        if isinstance(other, Boolean):
+            return Number(1 if other.value else 0)
+        return other
+
+    def _op_error(self, op):
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            f"Unexpected type for {type(self).__name__.lower()} {op} operation.",
+        )
+
+    def addition(self, other):
+        return self._op_error("addition")
+
+    def subtraction(self, other):
+        return self._op_error("subtraction")
+
+    def multiplication(self, other):
+        return self._op_error("multiplication")
+
+    def division(self, other):
+        return self._op_error("division")
+
+    def integer_division(self, other):
+        return self._op_error("division")
+
+    def power(self, other):
+        return self._op_error("power")
+
+    def is_equal(self, other):
+        return Boolean(False), None
+
+    def not_equal(self, other):
+        return Boolean(True), None
+
+    def less_than(self, other):
+        return Boolean(False), None
+
+    def greater_than(self, other):
+        return Boolean(False), None
+
+    def less_than_equal(self, other):
+        return Boolean(False), None
+
+    def greater_than_equal(self, other):
+        return Boolean(False), None
+
+    def and_(self, other):
+        return self._op_error("and")
+
+    def or_(self, other):
+        return self._op_error("or")
+
+    def not_(self):
+        return self._op_error("not")
+
+    def modulo_division(self, other):
+        return self._op_error("modulo")
+
+    def true_(self):
+        return False
+
+
+def _order_key(value):
+    """Maps a numeric-domain value to a float for ordering comparisons.
+
+    NaN maps to None (poisoning the comparison to false, per IEEE);
+    signed infinities map to +/-math.inf; Booleans coerce to 0.0/1.0;
+    anything non-numeric returns None so comparisons fall through false.
+    """
+    if isinstance(value, NaN):
+        return None
+    if isinstance(value, Inf):
+        return math.inf * value.sign
+    if isinstance(value, Number):
+        try:
+            return float(value.value)
+        except OverflowError:
+            # Huge exact integers overflow float conversion; they simply
+            # order beyond the finite float range.
+            return math.inf if value.value > 0 else -math.inf
+    if isinstance(value, Boolean):
+        return 1.0 if value.value else 0.0
+    return None
+
+
+def _numeric_order(self, other, operator):
+    """Shared implementation for <, >, <=, >= over numeric operands."""
+    a = _order_key(self)
+    b = _order_key(other)
+    if a is None or b is None:
+        return Boolean(False), None
+    return Boolean(operator(a, b)), None
+
+
+class Number(Value):
     """
     A datatype representing a number value.
 
@@ -47,47 +164,23 @@ class Number:
         self.set_pos()
         self.set_context()
 
-    def set_context(self, context=None):
-        self.context = context
-        return self
-
-    def set_pos(self, pos_start=None, pos_end=None):
-        self.pos_start = pos_start
-        self.pos_end = pos_end
-        return self
-
     def addition(self, other):
         if isinstance(other, Number):
             return Number(self.value + other.value), None
-
-        else:
-            return None, RunTimeError(
-                self.pos_start,
-                self.pos_end,
-                "Unexpected type for addition operation.",
-            )
+        return self._op_error("addition")
 
     def subtraction(self, other):
         if isinstance(other, Number):
             return Number(self.value - other.value), None
-
-        else:
-            return None, RunTimeError(
-                self.pos_start,
-                self.pos_end,
-                "Unexpected type for subtraction operation.",
-            )
+        return self._op_error("subtraction")
 
     def multiplication(self, other):
         if isinstance(other, Number):
             return Number(self.value * other.value), None
-
-        else:
-            return None, RunTimeError(
-                self.pos_start,
-                self.pos_end,
-                "Unexpected type for multiplication operation.",
-            )
+        if isinstance(other, (List, Array)):
+            # Scalar-vector multiplication works in both directions.
+            return other._reversed_multiplication(self)
+        return self._op_error("multiplication")
 
     def division(self, other):
         if isinstance(other, Number):
@@ -98,35 +191,84 @@ class Number:
                     "Unallowed division by zero.",
                 )
             return Number(self.value / other.value), None
-
-        else:
-            return None, RunTimeError(
-                self.pos_start,
-                self.pos_end,
-                "Unexpected type for division operation.",
-            )
+        return self._op_error("division")
 
     def integer_division(self, other):
+        """'%' — C-style integer division (truncates toward zero)."""
         if isinstance(other, Number):
+            if not isinstance(self.value, int) or not isinstance(other.value, int):
+                return None, RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    "'%' integer division requires integer operands.",
+                )
             if other.value == 0:
                 return None, RunTimeError(
                     self.pos_start,
                     self.pos_end,
                     "Unallowed division by zero.",
                 )
-            return Number(int(self.value // other.value)), None
+            quotient = abs(self.value) // abs(other.value)
+            if (self.value < 0) != (other.value < 0):
+                quotient = -quotient
+            return Number(quotient), None
+        return self._op_error("division")
 
-        else:
+    def modulo_division(self, other):
+        """'~' — C-style modulo (result takes the sign of the dividend)."""
+        if not isinstance(other, Number):
             return None, RunTimeError(
                 self.pos_start,
                 self.pos_end,
-                "Unexpected type for division operation.",
+                "Unexpected type for non-number types in modulo operation.",
             )
+        if not isinstance(self.value, int) or not isinstance(other.value, int):
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                "'~' modulo requires integer operands.",
+            )
+        if other.value == 0:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                "Unallowed modulo by zero.",
+            )
+        remainder = abs(self.value) % abs(other.value)
+        if self.value < 0:
+            remainder = -remainder
+        return Number(remainder), None
+
+    # Above this many result bits, an exact integer power is refused:
+    # it would either not fit any practical use or exhaust memory/CPU.
+    MAX_POWER_RESULT_BITS = 16384
 
     def power(self, power_factor):
         if isinstance(power_factor, Number):
+            base, exponent = self.value, power_factor.value
             try:
-                result = self.value**power_factor.value
+                if (
+                    isinstance(base, int)
+                    and isinstance(exponent, int)
+                    and abs(exponent) > 1
+                    and base not in (0, 1, -1)
+                ):
+                    estimated_bits = abs(base).bit_length() * abs(exponent)
+                    if estimated_bits > self.MAX_POWER_RESULT_BITS:
+                        approximate = float(base) ** float(exponent)
+                        if math.isinf(approximate):
+                            return None, BSharpMathError(
+                                self.pos_start,
+                                self.pos_end,
+                                "Result too large to represent.",
+                            )
+                        return Number(approximate), None
+
+                result = base**exponent
+            except (ValueError, OverflowError):
+                return None, BSharpMathError(
+                    self.pos_start, self.pos_end, "Result too large to represent."
+                )
             except ZeroDivisionError:
                 return None, RunTimeError(
                     self.pos_start,
@@ -145,19 +287,14 @@ class Number:
                     self.pos_end,
                     "Complex numbers are not yet supported.",
                 )
+            if isinstance(result, float) and math.isinf(result):
+                return None, BSharpMathError(
+                    self.pos_start,
+                    self.pos_end,
+                    "Result too large to represent.",
+                )
             return Number(result), None
-
-        else:
-            return None, RunTimeError(
-                self.pos_start,
-                self.pos_end,
-                "Unexpected type for power operation.",
-            )
-
-    def _to_number(self, other):
-        if isinstance(other, Boolean):
-            return Number(1 if other.value else 0)
-        return other
+        return self._op_error("power")
 
     def is_equal(self, other):
         if isinstance(other, (Number, Boolean)):
@@ -172,58 +309,28 @@ class Number:
         return Boolean(True), None
 
     def less_than(self, other):
-        if isinstance(other, (Number, Boolean)):
-            other = self._to_number(other)
-            return Boolean(self.value < other.value), None
-        return Boolean(False), None
+        return _numeric_order(self, other, lambda a, b: a < b)
 
     def greater_than(self, other):
-        if isinstance(other, (Number, Boolean)):
-            other = self._to_number(other)
-            return Boolean(self.value > other.value), None
-        return Boolean(False), None
+        return _numeric_order(self, other, lambda a, b: a > b)
 
     def less_than_equal(self, other):
-        if isinstance(other, (Number, Boolean)):
-            other = self._to_number(other)
-            return Boolean(self.value <= other.value), None
-        return Boolean(False), None
+        return _numeric_order(self, other, lambda a, b: a <= b)
 
     def greater_than_equal(self, other):
-        if isinstance(other, (Number, Boolean)):
-            other = self._to_number(other)
-            return Boolean(self.value >= other.value), None
-        return Boolean(False), None
-
-    def and_(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'and' operation.",
-        )
-
-    def or_(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'or' operation.",
-        )
-
-    def not_(self):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'not' operation.",
-        )
+        return _numeric_order(self, other, lambda a, b: a >= b)
 
     def true_(self):
         return self.value != 0
 
     def __repr__(self):
-        return str(self.value)
+        try:
+            return str(self.value)
+        except ValueError:
+            return "<value too large>"
 
 
-class Boolean:
+class Boolean(Value):
     """
     A datatype representing a boolean value (true | false).
 
@@ -252,20 +359,6 @@ class Boolean:
         self.set_pos()
         self.set_context()
 
-    def set_context(self, context=None):
-        self.context = context
-        return self
-
-    def set_pos(self, pos_start=None, pos_end=None):
-        self.pos_start = pos_start
-        self.pos_end = pos_end
-        return self
-
-    def _to_number(self, other):
-        if isinstance(other, Boolean):
-            return Number(1 if other.value else 0)
-        return other
-
     def is_equal(self, other):
         if isinstance(other, (Number, Boolean)):
             other_num = self._to_number(other)
@@ -281,32 +374,16 @@ class Boolean:
         return Boolean(True), None
 
     def less_than(self, other):
-        if isinstance(other, (Number, Boolean)):
-            other_num = self._to_number(other)
-            my_num = Number(1 if self.value else 0)
-            return Boolean(my_num.value < other_num.value), None
-        return Boolean(False), None
+        return _numeric_order(self, other, lambda a, b: a < b)
 
     def greater_than(self, other):
-        if isinstance(other, (Number, Boolean)):
-            other_num = self._to_number(other)
-            my_num = Number(1 if self.value else 0)
-            return Boolean(my_num.value > other_num.value), None
-        return Boolean(False), None
+        return _numeric_order(self, other, lambda a, b: a > b)
 
     def less_than_equal(self, other):
-        if isinstance(other, (Number, Boolean)):
-            other_num = self._to_number(other)
-            my_num = Number(1 if self.value else 0)
-            return Boolean(my_num.value <= other_num.value), None
-        return Boolean(False), None
+        return _numeric_order(self, other, lambda a, b: a <= b)
 
     def greater_than_equal(self, other):
-        if isinstance(other, (Number, Boolean)):
-            other_num = self._to_number(other)
-            my_num = Number(1 if self.value else 0)
-            return Boolean(my_num.value >= other_num.value), None
-        return Boolean(False), None
+        return _numeric_order(self, other, lambda a, b: a >= b)
 
     def and_(self, other):
         if isinstance(other, Boolean):
@@ -329,48 +406,6 @@ class Boolean:
     def not_(self):
         return Boolean(not self.value), None
 
-    def addition(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for addition operation.",
-        )
-
-    def subtraction(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for subtraction operation.",
-        )
-
-    def multiplication(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for multiplication operation.",
-        )
-
-    def division(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for division operation.",
-        )
-
-    def integer_division(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for division operation.",
-        )
-
-    def power(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for power operation.",
-        )
-
     def true_(self):
         return self.value
 
@@ -378,11 +413,7 @@ class Boolean:
         return "true" if self.value == True else "false"
 
 
-class Complex:
-    pass
-
-
-class String:
+class String(Value):
     """ """
 
     def __init__(self, value: str):
@@ -390,25 +421,12 @@ class String:
         self.set_pos()
         self.set_context()
 
-    def set_context(self, context=None):
-        self.context = context
-        return self
-
-    def set_pos(self, pos_start=None, pos_end=None):
-        self.pos_start = pos_start
-        self.pos_end = pos_end
-        return self
-
     def addition(self, other):
         if isinstance(other, String):
             return String(self.value + other.value), None
         elif isinstance(other, (Number, Boolean)):
             return String(self.value + str(other)), None
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for string addition.",
-        )
+        return self._op_error("addition")
 
     def multiplication(self, other):
         if isinstance(other, Number) and isinstance(other.value, int):
@@ -427,34 +445,6 @@ class String:
 
     def _reversed_multiplication(self, other):
         return self.multiplication(other)
-
-    def subtraction(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for string subtraction.",
-        )
-
-    def division(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for division operation.",
-        )
-
-    def integer_division(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for division operation.",
-        )
-
-    def power(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for string power operation.",
-        )
 
     def is_equal(self, other):
         if isinstance(other, String):
@@ -486,48 +476,14 @@ class String:
             return Boolean(self.value >= other.value), None
         return Boolean(False), None
 
-    def not_(self):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'not' operation.",
-        )
-
-    def and_(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'and' operation.",
-        )
-
-    def or_(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'or' operation.",
-        )
-
     def true_(self):
         return len(self.value) > 0
-
-    def get_index(self, index):
-        i = int(index)
-        if i < 0:
-            i += len(self.value)
-        if i < 0 or i >= len(self.value):
-            return None, RunTimeError(
-                self.pos_start, self.pos_end, "Index out of bounds"
-            )
-        return String(self.value[i]), None
-
-    def get_slice(self, start, end):
-        return String(self.value[start:end]), None
 
     def __repr__(self):
         return f'"{self.value}"'
 
 
-class Empty:
+class Empty(Value):
     """
     A datatype represnting a Null (None) Value.
 
@@ -565,83 +521,9 @@ class Empty:
     """
 
     def __init__(self):
+        self.value = None
         self.set_pos()
         self.set_context()
-
-    def set_pos(self, pos_start=None, pos_end=None):
-        self.pos_start = pos_start
-        self.pos_end = pos_end
-        return self
-
-    def set_context(self, context=None):
-        self.context = context
-        return self
-
-    def true_(self):
-        return False
-
-    def addition(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for addition operation.",
-        )
-
-    def subtraction(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for subtraction operation.",
-        )
-
-    def multiplication(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for multiplication operation.",
-        )
-
-    def division(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for division operation.",
-        )
-
-    def integer_division(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for division operation.",
-        )
-
-    def power(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for power operation.",
-        )
-
-    def and_(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'and' operation.",
-        )
-
-    def or_(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'or' operation.",
-        )
-
-    def not_(self):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'not' operation.",
-        )
 
     def is_equal(self, other):
         if isinstance(other, Empty):
@@ -653,37 +535,88 @@ class Empty:
             return Boolean(False), None
         return Boolean(True), None
 
-    def less_than(self, other):
-        return Boolean(False), None
-
-    def greater_than(self, other):
-        return Boolean(False), None
-
-    def less_than_equal(self, other):
-        return Boolean(False), None
-
-    def greater_than_equal(self, other):
-        return Boolean(False), None
+    def true_(self):
+        return False
 
     def __repr__(self):
         return "none"
 
 
-class NaN:
-    pass
+class NaN(Value):
+    def __init__(self):
+        self.set_pos()
+        self.set_context()
+
+    def is_equal(self, other):
+        # IEEE semantics: NaN is unequal to everything, including itself.
+        return Boolean(False), None
+
+    def not_equal(self, other):
+        return Boolean(True), None
+
+    def true_(self):
+        return False
+
+    def __repr__(self):
+        return "nan"
 
 
-class Reference:
-    pass
+class Inf(Value):
+    """Signed infinity.
+
+    The `inf` keyword produces +inf; unary '-' on an infinity flips the
+    sign, so -inf exists as a first-class value. Ordering follows IEEE
+    rules via _order_key; equality is sign-aware.
+    """
+
+    def __init__(self, sign=1):
+        self.sign = 1 if sign >= 0 else -1
+        self.set_pos()
+        self.set_context()
+
+    def negated(self):
+        result = Inf(-self.sign)
+        result.set_pos(self.pos_start, self.pos_end)
+        result.set_context(self.context)
+        return result
+
+    def is_equal(self, other):
+        # Infinities are equal only to another infinity of the SAME sign;
+        # +inf == -inf is false. Any other value simply compares false.
+        return Boolean(isinstance(other, Inf) and other.sign == self.sign), None
+
+    def not_equal(self, other):
+        equal, _ = self.is_equal(other)
+        return Boolean(not equal.value), None
+
+    def less_than(self, other):
+        return _numeric_order(self, other, lambda a, b: a < b)
+
+    def greater_than(self, other):
+        return _numeric_order(self, other, lambda a, b: a > b)
+
+    def less_than_equal(self, other):
+        return _numeric_order(self, other, lambda a, b: a <= b)
+
+    def greater_than_equal(self, other):
+        return _numeric_order(self, other, lambda a, b: a >= b)
+
+    def true_(self):
+        return True
+
+    def __repr__(self):
+        return "-inf" if self.sign < 0 else "inf"
 
 
-class List:
+class List(Value):
     """
     A complex datatype representing a collection of data.
 
-    Introduction:\n
-    A list is a datatype that holds a collection of other complex or atomic
-    data types. It can hold.
+    Mutation methods (push, append, swap, delete) operate on the SAME list.
+    drop(start, end) also mutates the same list but returns the extracted
+    slice as a new List the caller may keep or ignore.
+
+    Indices are Python-style: negative values wrap from the end.
     """
 
     def __init__(self, list_of_elements: list):
@@ -691,54 +624,108 @@ class List:
         self.set_context()
         self.list_of_elements = list_of_elements
 
-    def set_pos(self, pos_start=None, pos_end=None):
-        self.pos_start = pos_start
-        self.pos_end = pos_end
-        return self
+    # ---------- index helpers ----------
 
-    def set_context(self, context=None):
-        self.context = context
-        return self
+    def _resolve_insert_index(self, index):
+        """Normalizes an insertion index. Valid range covers -len..len."""
+        n = len(self.list_of_elements)
+        i = index
+        if i < 0:
+            i += n
+        if i < 0 or i > n:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                f"Insert index {index} is out of bounds for length {n}.",
+            )
+        return i, None
 
-    def append(self, element):
-        self.list_of_elements.append(element)
+    def _resolve_access_index(self, index):
+        """Normalizes an element-access index. Valid range covers -len..len-1."""
+        n = len(self.list_of_elements)
+        i = index
+        if i < 0:
+            i += n
+        if i < 0 or i >= n:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                f"Index {index} is out of bounds for length {n}.",
+            )
+        return i, None
+
+    # ---------- in-place mutation methods ----------
 
     def push(self, element, index=None):
-        """
-        Insert element at index (or append if index is None).
-        Returns new List.
-        """
-        new_elements = self.list_of_elements.copy()
+        """Insert at index (or append when index is omitted). In place."""
         if index is None:
-            new_elements.append(element)
-        else:
-            new_elements.insert(int(index), element)
-        return List(new_elements)
+            self.list_of_elements.append(element)
+            return None, None
+        i, err = self._resolve_insert_index(index)
+        if err:
+            return None, err
+        self.list_of_elements.insert(i, element)
+        return None, None
 
-    def drop(self, index):
-        """
-        Remove element at index. Returns new List.
-        """
-        new_elements = self.list_of_elements.copy()
-        del new_elements[int(index)]
-        return List(new_elements)
+    def append(self, element):
+        """Append to the end. In place."""
+        self.list_of_elements.append(element)
+        return None, None
 
-    def delete(self, start, end):
+    def swap(self, element, index):
+        """Replace the element at index. In place."""
+        i, err = self._resolve_access_index(index)
+        if err:
+            return None, err
+        self.list_of_elements[i] = element
+        return None, None
+
+    def delete(self, index):
+        """Remove a single element by index. In place."""
+        i, err = self._resolve_access_index(index)
+        if err:
+            return None, err
+        del self.list_of_elements[i]
+        return None, None
+
+    def drop(self, start, end):
+        """Remove slice [start:end] in place; return it as a new List."""
+        n = len(self.list_of_elements)
+        s, e = start, end
+        if s < 0:
+            s += n
+        if e < 0:
+            e += n
+        if s < 0 or e < 0 or s > e or e > n:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                f"Invalid drop range [{start}:{end}] for length {n}.",
+            )
+        removed = self.list_of_elements[s:e]
+        del self.list_of_elements[s:e]
+        return List(removed), None
+
+    # ---------- arithmetic ----------
+
+    @staticmethod
+    def _element_wise(elements, other, operation):
+        """Applies `operation` element-wise against `other`.
+
+        An element that refuses the operation is kept unchanged, so the
+        result always preserves the container size.
         """
-        Remove elements from start to end (exclusive).
-        Returns new List.
-        """
-        new_elements = self.list_of_elements.copy()
-        del new_elements[int(start) : int(end)]
-        return List(new_elements)
+        new_elements = []
+        for element in elements:
+            res, error = operation(element, other)
+            new_elements.append(element if error else res)
+        return new_elements
 
     def multiplication(self, other):
         if isinstance(other, Number):
-            new_elements = []
-            for element in self.list_of_elements:
-                res, error = element.multiplication(other)
-                if not error:
-                    new_elements.append(res)
+            new_elements = self._element_wise(
+                self.list_of_elements, other, lambda el, o: el.multiplication(o)
+            )
             return (
                 List(new_elements)
                 .set_context(self.context)
@@ -753,11 +740,12 @@ class List:
                     self.pos_end,
                     f"List multiplication requires both lists to be the same size, got {len(self.list_of_elements)} and {len(other.list_of_elements)}.",
                 )
+
             new_elements = []
-            for i, j in zip(self.list_of_elements, other.list_of_elements):
-                res, error = i.multiplication(j)
-                if not error:
-                    new_elements.append(res)
+            for a, b in zip(self.list_of_elements, other.list_of_elements):
+                res, error = a.multiplication(b)
+                new_elements.append(a if error else res)
+
             return (
                 List(new_elements)
                 .set_context(self.context)
@@ -771,43 +759,34 @@ class List:
             f"Unsupported type '{type(other).__name__}' for list multiplication.",
         )
 
+    def division(self, other):
+        if isinstance(other, Number):
+            # Scalar-vector division, same rules as element-wise division.
+            new_elements = self._element_wise(
+                self.list_of_elements, other, lambda el, o: el.division(o)
+            )
+            return (
+                List(new_elements)
+                .set_context(self.context)
+                .set_pos(self.pos_start, self.pos_end),
+                None,
+            )
+
+        if isinstance(other, List):
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                "Division between two lists is not supported.",
+            )
+
+        return None, RunTimeError(
+            self.pos_start,
+            self.pos_end,
+            f"Unsupported type '{type(other).__name__}' for list division.",
+        )
+
     def _reversed_multiplication(self, other):
         return self.multiplication(other)
-
-    def addition(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for list addition.",
-        )
-
-    def subtraction(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for list subtraction.",
-        )
-
-    def division(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for list division.",
-        )
-
-    def integer_division(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for list integer division.",
-        )
-
-    def power(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for list power operation.",
-        )
 
     def is_equal(self, other):
         if isinstance(other, List):
@@ -828,58 +807,6 @@ class List:
             return res, error
         return Boolean(not res.value), None
 
-    def less_than(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for list less than comparison.",
-        )
-
-    def greater_than(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for list greater than comparison.",
-        )
-
-    def less_than_equal(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for list less than or equal comparison.",
-        )
-
-    def greater_than_equal(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for list greater than or equal comparison.",
-        )
-
-    def and_(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'and' operation.",
-        )
-
-    def or_(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'or' operation.",
-        )
-
-    def not_(self):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'not' operation.",
-        )
-
-    def true_(self):
-        return Boolean(len(self.list_of_elements) > 0)
-
     def copy(self):
         copy = List(self.list_of_elements[:])
         copy.set_pos(self.pos_start, self.pos_end)
@@ -890,54 +817,34 @@ class List:
         return f"{self.list_of_elements}"
 
 
-class Array:
-    """Base class for typed arrays. Element type is enforced at assignment time."""
+class Array(List):
+    """Typed array: element type enforced on every mutation."""
 
     def __init__(self, element_type_class, list_of_elements=None):
         self.element_type = element_type_class
-        self.list_of_elements = list_of_elements or []
         self.set_pos()
         self.set_context()
+        self.list_of_elements = list_of_elements if list_of_elements is not None else []
 
-    def set_pos(self, pos_start=None, pos_end=None):
-        self.pos_start = pos_start
-        self.pos_end = pos_end
-        return self
-
-    def set_context(self, context=None):
-        self.context = context
-        return self
+    # Mutations validate the element type first, then behave exactly like a list.
 
     def push(self, element, index=None):
-        """
-        Insert element at index (or append if index is None).
-        Returns new List.
-        """
-        if isinstance(self._validate_element(element), RunTimeError):
-            return
-        new_elements = self.list_of_elements.copy()
-        if index is None:
-            new_elements.append(element)
-        else:
-            new_elements.insert(int(index), element)
-        return List(new_elements)
+        err = self._validate_element(element)
+        if err:
+            return None, err
+        return List.push(self, element, index)
 
-    def drop(self, index):
-        """
-        Remove element at index. Returns new List.
-        """
-        new_elements = self.list_of_elements.copy()
-        del new_elements[int(index)]
-        return List(new_elements)
+    def append(self, element):
+        err = self._validate_element(element)
+        if err:
+            return None, err
+        return List.append(self, element)
 
-    def delete(self, start, end):
-        """
-        Remove elements from start to end (exclusive).
-        Returns new List.
-        """
-        new_elements = self.list_of_elements.copy()
-        del new_elements[int(start) : int(end)]
-        return List(new_elements)
+    def swap(self, element, index):
+        err = self._validate_element(element)
+        if err:
+            return None, err
+        return List.swap(self, element, index)
 
     def _validate_element(self, element):
         if isinstance(element, Empty):
@@ -958,33 +865,11 @@ class Array:
         return None
 
     def multiplication(self, other):
-        if isinstance(other, Number):
-            new_elements = []
-            for element in self.list_of_elements:
-                res, error = element.multiplication(other)
-                if not error:
-                    new_elements.append(res)
-            return self._new_array(new_elements), None
-
-        if isinstance(other, Array):
-            if not isinstance(other, type(self)):
-                return None, RunTimeError(
-                    self.pos_start,
-                    self.pos_end,
-                    f"Cannot perform element-wise multiplication between {type(self).__name__} and {type(other).__name__}.",
-                )
-            if len(self.list_of_elements) != len(other.list_of_elements):
-                return None, RunTimeError(
-                    self.pos_start,
-                    self.pos_end,
-                    f"Array multiplication requires both arrays to be the same size, got {len(self.list_of_elements)} and {len(other.list_of_elements)}.",
-                )
-            new_elements = []
-            for a, b in zip(self.list_of_elements, other.list_of_elements):
-                res, error = a.multiplication(b)
-                if not error:
-                    new_elements.append(res)
-            return self._new_array(new_elements), None
+        if isinstance(other, (Number, List)):
+            elements, error = List.multiplication(self, other)
+            if error:
+                return None, error
+            return self._new_array(elements.list_of_elements), None
 
         return None, RunTimeError(
             self.pos_start,
@@ -992,46 +877,21 @@ class Array:
             f"Unsupported type '{type(other).__name__}' for array multiplication.",
         )
 
-    def _reversed_multiplication(self, other):
-        return self.multiplication(other)
-
-    def addition(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for array addition.",
-        )
-
-    def subtraction(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for array subtraction.",
-        )
-
     def division(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for array division.",
-        )
+        if isinstance(other, Number):
+            elements, error = List.division(self, other)
+            if error:
+                return None, error
+            return self._new_array(elements.list_of_elements), None
 
-    def integer_division(self, other):
         return None, RunTimeError(
             self.pos_start,
             self.pos_end,
-            "Unsupported operand type for array integer division.",
-        )
-
-    def power(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for array power operation.",
+            "Division between two arrays or lists is not supported.",
         )
 
     def is_equal(self, other):
-        if isinstance(other, Array) and type(self) is type(other):
+        if isinstance(other, List):
             if len(self.list_of_elements) != len(other.list_of_elements):
                 return Boolean(False), None
             for a, b in zip(self.list_of_elements, other.list_of_elements):
@@ -1042,64 +902,6 @@ class Array:
                     return Boolean(False), None
             return Boolean(True), None
         return Boolean(False), None
-
-    def not_equal(self, other):
-        res, error = self.is_equal(other)
-        if error:
-            return res, error
-        return Boolean(not res.value), None
-
-    def less_than(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for array less than comparison.",
-        )
-
-    def greater_than(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for array greater than comparison.",
-        )
-
-    def less_than_equal(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for array less than or equal comparison.",
-        )
-
-    def greater_than_equal(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unsupported operand type for array greater than or equal comparison.",
-        )
-
-    def and_(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'and' operation.",
-        )
-
-    def or_(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'or' operation.",
-        )
-
-    def not_(self):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'not' operation.",
-        )
-
-    def true_(self):
-        return Boolean(len(self.list_of_elements) > 0)
 
     def _new_array(self, elements):
         arr = type(self)(elements)
@@ -1134,6 +936,12 @@ class EmptyArray(Array):
         super().__init__(Empty, list_of_elements)
 
 
+class Tuple(Value):
+    """
+    A complex datatype representing an immutable container of data.
+    """
+
+
 class Context:
     """
     Runtime scope holding the variables table that persists across statements.
@@ -1144,7 +952,6 @@ class Context:
         display_name,
         parent=None,
         parent_entry_pos=None,
-        redefine=False,
         in_function=False,
     ):
         self.display_name = display_name
@@ -1152,7 +959,25 @@ class Context:
         self.parent_entry_pos = parent_entry_pos
         self.in_function = in_function
         self.variables = EnvironmentVariable(parent.variables if parent else None)
-        self.variables.allow_redefine = redefine
+
+
+class BodyScopeContext(Context):
+    """Loop body context that reads from the loop scope but writes new
+    variable definitions to the enclosing (non-loop) scope.
+
+    This lets loop body code read loop control variables (like ``i`` in
+    ``for`` headers) while ensuring ``var`` declarations inside the body
+    are visible outside the loop.
+    """
+
+    def __init__(self, loop_context, write_to):
+        super().__init__("<loop body>", loop_context)
+        self._write_to = write_to
+
+    def define(self, name, data_type, value, is_const=False):
+        return self._write_to.variables.set_pos(
+            self.variables.pos_start, self.variables.pos_end
+        ).define(name, data_type, value, is_const)
 
 
 class EnvironmentVariable:
@@ -1182,7 +1007,6 @@ class EnvironmentVariable:
         self.pos_end = None
         self.variables = {}
         self.parent = parent
-        self.allow_redefine = False
         self.set_pos()
 
     def set_pos(self, pos_start=None, pos_end=None):
@@ -1195,20 +1019,6 @@ class EnvironmentVariable:
 
         # 1. Check for redefinition
         if name in self.variables:
-            if self.allow_redefine:
-                entry = self.variables[name]
-                if entry["is_const"]:
-                    return None, ModificationError(
-                        self.pos_start,
-                        self.pos_end,
-                        f"Cannot change value of '{name}' of type const.",
-                    )
-                type_error = self._type_mismatch_error(entry["type"], value)
-                if type_error:
-                    return None, type_error
-                entry["value"] = value
-                return value, None
-
             return None, AssignmentError(
                 self.pos_start,
                 self.pos_end,
@@ -1330,7 +1140,7 @@ class EnvironmentVariable:
         )
 
 
-class Function:
+class Function(Value):
     """
     Runtime representation of a defined function in B-Sharp.
     """
@@ -1347,15 +1157,6 @@ class Function:
         )
         self.set_context(parent_context)
         self.set_pos()
-
-    def set_context(self, context=None):
-        self.context = context
-        return self
-
-    def set_pos(self, pos_start=None, pos_end=None):
-        self.pos_start = pos_start
-        self.pos_end = pos_end
-        return self
 
     def execute(self, args, interpreter, call_pos_start=None, call_pos_end=None):
         from B_Sharp.ASTNodes.parser import RunTimeResult
@@ -1448,69 +1249,6 @@ class Function:
 
         return res.success(return_val)
 
-    def addition(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for addition operation.",
-        )
-
-    def subtraction(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for subtraction operation.",
-        )
-
-    def multiplication(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for multiplication operation.",
-        )
-
-    def division(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for division operation.",
-        )
-
-    def integer_division(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for division operation.",
-        )
-
-    def power(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for power operation.",
-        )
-
-    def and_(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'and' operation.",
-        )
-
-    def or_(self, other):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'or' operation.",
-        )
-
-    def not_(self):
-        return None, RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "Unexpected type for 'not' operation.",
-        )
-
     def is_equal(self, other):
         if isinstance(other, Function):
             return Boolean(self is other), None
@@ -1521,18 +1259,6 @@ class Function:
             return Boolean(self is not other), None
         return Boolean(True), None
 
-    def less_than(self, other):
-        return Boolean(False), None
-
-    def greater_than(self, other):
-        return Boolean(False), None
-
-    def less_than_equal(self, other):
-        return Boolean(False), None
-
-    def greater_than_equal(self, other):
-        return Boolean(False), None
-
     def true_(self):
         return True
 
@@ -1540,44 +1266,20 @@ class Function:
         return f"<function {self.name}>"
 
 
-class OverloadSet:
-    """
-    A supportive declaration for functions. It basically is the key behind
-    overloading and overwriting in B-Sharp.
-
-    Overloading: The process of overloading is defining an already defined
-    function by keeping *same identifier*, but with *different parameter
-    signature*.
-
-    Overwriting: The process of completely replacing an existing signature
-    or in other words *redeclaring the existing signature in the same
-    context.*
-    """
-
-    def __init__(self, name):
-        self.name = name
-
-        # A helper dictionary to map a signature key to a function's instance.
-        # Key format: (arity, args)
-        self.variants = {}
-
-    def get_signature_key(self, func):
-        """
-        Extracts a key based on parameter count and type names
-        """
-
-
-# A helper dictionary for all declared types before.
-# Keys are normalized to lowercase so both `Number` and `number` resolve.
+# A helper dictionary for all declared types.
+# Only these canonical uppercase spellings are valid type annotations.
 TYPE_MAP = {
     "Bool": Boolean,
     "Number": Number,
     "String": String,
+    "Inf": Inf,
+    "NaN": NaN,
     "Empty": Empty,
     "List": List,
     "Function": Function,
     "Number[]": NumberArray,
     "String[]": StringArray,
     "Boolean[]": BooleanArray,
+    "Bool[]": BooleanArray,
     "Empty[]": EmptyArray,
 }

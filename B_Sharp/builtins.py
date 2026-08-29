@@ -20,16 +20,30 @@ class BuiltinFunction:
         self.context = context
         return self
 
+    def true_(self):
+        return True
+
     def execute(self, args, interpreter, call_pos_start=None, call_pos_end=None):
         from B_Sharp.ASTNodes.parser import RunTimeResult
 
         res = RunTimeResult()
         self.pos_start = call_pos_start
         self.pos_end = call_pos_end
-        result = self.func(args, context=self.context, call_node=None)
+        try:
+            result = self.func(args, context=self.context, call_node=None)
+        except Exception as e:
+            return res.failure(
+                RunTimeError(call_pos_start, call_pos_end, f"{self.name}: {e}")
+            )
         if isinstance(result, tuple):
             value, error = result
             if error:
+                # Errors raised inside builtins usually carry no source
+                # position; stamp them with the call site so reports point
+                # at the offending line.
+                if error.pos_start is None or error.pos_end is None:
+                    error.pos_start = call_pos_start
+                    error.pos_end = call_pos_end
                 return res.failure(error)
             return res.success(value)
         return res.success(result)
@@ -38,23 +52,28 @@ class BuiltinFunction:
         return f"<builtin function {self.name}>"
 
 
+def _render_for_print(value):
+    """Python-style rendering: top-level strings unquoted, everything
+    else via its repr (so nested strings inside lists stay quoted)."""
+    if isinstance(value, String):
+        return value.value
+    return str(value)
+
+
 def _write(args, context, call_node):
-    parts = []
-    for arg in args:
-        parts.append(repr(arg) if isinstance(arg, String) else str(arg))
-    sys.stdout.write("".join(parts))
+    sys.stdout.write("".join(_render_for_print(arg) for arg in args))
+    sys.stdout.flush()
     return Empty()
 
 
 def _writeln(args, context, call_node):
-    parts = []
-    for arg in args:
-        parts.append(repr(arg) if isinstance(arg, String) else str(arg))
-    print("".join(parts))
+    print("".join(_render_for_print(arg) for arg in args))
     return Empty()
 
 
 def _format(args, context, call_node):
+    import re
+
     if len(args) < 1:
         return None, RunTimeError(
             None, None, "'format' expects at least 1 argument (template string)."
@@ -64,9 +83,8 @@ def _format(args, context, call_node):
         return None, RunTimeError(
             None, None, "First argument to 'format' must be a String."
         )
-    result = template.value
-    for i, arg in enumerate(args[1:]):
-        result = result.replace("{" + str(i) + "}", str(arg))
+    fmt_map = {str(i): str(arg) for i, arg in enumerate(args[1:])}
+    result = re.sub(r"\{(\d+)\}", lambda m: fmt_map.get(m.group(1), m.group(0)), template.value)
     return String(result), None
 
 
@@ -74,6 +92,10 @@ def _read(args, context, call_node):
     try:
         return String(input()), None
     except EOFError:
+        return String(""), None
+    except OSError as e:
+        return None, RunTimeError(None, None, f"read failed: {e}")
+    except KeyboardInterrupt:
         return String(""), None
 
 
@@ -87,6 +109,10 @@ def _readln(args, context, call_node):
     try:
         return String(input(prompt)), None
     except EOFError:
+        return String(""), None
+    except OSError as e:
+        return None, RunTimeError(None, None, f"readln failed: {e}")
+    except KeyboardInterrupt:
         return String(""), None
 
 

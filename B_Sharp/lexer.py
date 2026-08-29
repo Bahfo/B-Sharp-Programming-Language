@@ -1,4 +1,3 @@
-from B_Sharp.ASTNodes.parser import Parser
 from B_Sharp.position import Position
 from B_Sharp.errors import *
 from B_Sharp.tokens import *
@@ -6,14 +5,16 @@ from B_Sharp.tokens import *
 import string
 
 DIGITS = "0123456789"
-LETTERS = string.ascii_letters
-LETTERS_DIGITS = LETTERS + DIGITS + "_"
+LETTERS = string.ascii_letters + "_"
+LETTERS_DIGITS = LETTERS + DIGITS
 
 
 class Token:
     def __init__(self, type, value=None, pos_start=None, pos_end=None):
         self.type = type
         self.value = value
+        self.pos_start = None
+        self.pos_end = None
 
         if pos_start:
             self.pos_start = pos_start.copy()
@@ -66,13 +67,36 @@ class Lexer:
                         self.pos,
                         "A number literal cannot contain more than one decimal point.",
                     )
-                if self.peek() not in DIGITS:
+
+                if self.peek() is None or self.peek() not in DIGITS:
                     break
                 dot_count += 1
                 number_str += "."
             else:
                 number_str += self.current_char
             self.forward()
+
+        # Scientific notation: 1e5, 2.5E-3, 7e+10
+        if (
+            self.current_char is not None
+            and self.current_char in ("e", "E")
+            and number_str
+            and number_str != "."
+        ):
+            exponent_part = ""
+            offset = 1
+            if self.peek(offset) in ("+", "-"):
+                exponent_part += self.peek(offset)
+                offset += 1
+            if self.peek(offset) is not None and self.peek(offset) in DIGITS:
+                while self.peek(offset) is not None and self.peek(offset) in DIGITS:
+                    exponent_part += self.peek(offset)
+                    offset += 1
+
+                for _ in range(offset):
+                    self.forward()
+                number_str += "e" + exponent_part
+                dot_count = max(dot_count, 1)
 
         if dot_count == 0:
             return Token(TOKEN_INT, int(number_str), pos_start, self.pos), None
@@ -190,19 +214,28 @@ class Lexer:
         if comment_type == "single":
             while self.current_char is not None and self.current_char != "\n":
                 self.forward()
+            return None
         elif comment_type == "multi":
             while self.current_char is not None:
                 if self.current_char == "*" and self.peek() == "/":
                     self.forward()  # skip '*'
                     self.forward()  # skip '/'
-                    return
+                    return None
                 self.forward()
+
+            return B_SharpSyntaxError(
+                pos_start=self.pos.copy(),
+                pos_end=self.pos.copy(),
+                details="Unterminated block comment. Expected closing '*/'.",
+            )
+
+        return None
 
     def tokenize(self):
         tokens = []
 
         while self.current_char != None:
-            if self.current_char in " \t":
+            if self.current_char in " \t\x0b\x0c":
                 self.forward()
             elif self.current_char in ("\n", ";"):
                 token_type = (
@@ -217,7 +250,9 @@ class Lexer:
             elif self.current_char == "/" and self.peek() == "*":
                 self.forward()  # skip first '/'
                 self.forward()  # skip '*'
-                self.commentize("multi")
+                comment_error = self.commentize("multi")
+                if comment_error:
+                    return [], comment_error
             elif self.current_char == "\r":
                 self.forward()  # Skip carriage return
             elif self.current_char == "{":
@@ -271,8 +306,15 @@ class Lexer:
                         Token(TOKEN_MINUS, pos_start=pos_start, pos_end=self.pos)
                     )
             elif self.current_char == "%":
+                pos_start = self.pos.copy()
                 self.forward()
                 tokens.append(Token(TOKEN_IDIV, pos_start=pos_start, pos_end=self.pos))
+            elif self.current_char == "~":
+                pos_start = self.pos.copy()
+                self.forward()
+                tokens.append(
+                    Token(TOKEN_MODULO, pos_start=pos_start, pos_end=self.pos)
+                )
             elif self.current_char == "*":
                 pos_start = self.pos.copy()
                 self.forward()
@@ -297,13 +339,8 @@ class Lexer:
                 tokens.append(Token(TOKEN_POWER, pos_start=self.pos))
                 self.forward()
             elif self.current_char == ":":
-                if self.peek() == ":":
-                    self.forward()
-                    self.forward()
-                    tokens.append(Token(TOKEN_IMPORT_TAKE, pos_start=self.pos))
-                else:
-                    tokens.append(Token(TOKEN_COLON, pos_start=self.pos))
-                    self.forward()
+                tokens.append(Token(TOKEN_COLON, pos_start=self.pos))
+                self.forward()
             elif self.current_char == ",":
                 tokens.append(Token(TOKEN_COMMA, pos_start=self.pos))
                 self.forward()
@@ -338,16 +375,3 @@ class Lexer:
 
         tokens.append(Token(TOKEN_EOF, pos_start=self.pos))
         return tokens, None
-
-
-def run(file_name, text):
-    lexer = Lexer(file_name, text)
-    tokens, error = lexer.tokenize()
-
-    if error:
-        return None, error
-
-    parser = Parser(tokens)
-    ast = parser.parser()
-
-    return ast.node, ast.error

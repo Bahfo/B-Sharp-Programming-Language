@@ -1,3 +1,6 @@
+import math
+
+
 class NumberNode:
     def __init__(self, token):
         self.token = token
@@ -39,17 +42,6 @@ class BinaryOpNode:
 
     def __repr__(self):
         return f"({self.left_node} : {self.op_token} : {self.right_node})"
-
-
-class BinaryNegationNode:
-    def __init__(self, op_token, node):
-        self.op_token = op_token
-        self.node = node
-        self.pos_start = op_token.pos_start
-        self.pos_end = node.pos_end
-
-    def __repr__(self):
-        return f"{self.op_token} : {self.node}"
 
 
 class VariableAssignNode:
@@ -308,4 +300,16 @@ class ImportNode:
         self.module_to_import = module_to_import
         self.pos_start = pos_start
         self.symbols = symbols
+        self.pos_end = pos_end
+
+
+class NaNNode:
+    def __init__(self, pos_start, pos_end=None):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+
+class InfinityNode:
+    def __init__(self, pos_start, pos_end=None):
+        self.pos_start = pos_start
         self.pos_end = pos_end
