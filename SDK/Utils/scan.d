@@ -2,7 +2,9 @@
 // The B-Sharp Programming Language Written by B# Authors.
 // Use of this source code is governed by GPLv3 License. 
 
-import std.file : dirEntries, SpanMode, exists, mkdirRecurse, write;
+module Utils.scan;
+
+import std.file : dirEntries, SpanMode, exists, mkdirRecurse, write, isDir;
 import std.stdio : writeln, writefln;
 import std.array : array; 
 import std.format : format;
@@ -39,12 +41,12 @@ struct CheckResult {
 Requirement[] getBSharpRequirements() {
     return [
         Requirement(
-            "bsharp.main",
+            "main.bsharp",
             "Main entry point source file",
             q"BSHARP
 // B# Main Entry Point
-func main() {
-    print("Hello, B# World!");
+fn main() -> Empty {
+    writeln("Hello, B# World!");
 }
 BSHARP"
         ),
@@ -67,7 +69,7 @@ BSHARP"
     "name": "MyBSharpProject",
     "version": "1.0.0",
     "builder": true,
-    "entry": "bsharp.main"
+    "entry": "main.bsharp"
 }
 JSON"
         )
@@ -76,18 +78,28 @@ JSON"
 
 /* Scans for a single requirement */
 CheckResult checkRequirement(string directory, Requirement req) {
-    auto matches = dirEntries(directory, req.filename, SpanMode.depth).array;
-
-    CheckStatus status;
-    if (matches.length == 1) {
-        status = CheckStatus.ok;
-    } else if (matches.length > 1) {
-        status = CheckStatus.multiple;
-    } else {
-        status = CheckStatus.missing;
+    // If directory doesn't exist, report missing without throwing
+    if (!exists(directory) || !isDir(directory)) {
+        return CheckResult(req, CheckStatus.missing, 0);
     }
 
-    return CheckResult(req, status, matches.length);
+    try {
+        auto matches = dirEntries(directory, req.filename, SpanMode.depth).array;
+
+        CheckStatus status;
+        if (matches.length == 1) {
+            status = CheckStatus.ok;
+        } else if (matches.length > 1) {
+            status = CheckStatus.multiple;
+        } else {
+            status = CheckStatus.missing;
+        }
+
+        return CheckResult(req, status, matches.length);
+    } catch (Exception) {
+        // On any filesystem error, treat as missing but don't crash doctor
+        return CheckResult(req, CheckStatus.missing, 0);
+    }
 }
 
 /* 
@@ -100,6 +112,10 @@ CheckResult[] doctor(string directory = ".") {
         "\n[•] Running B# Doctor in: " ~ directory ~ 
         Color.reset ~ "\n"
     );
+
+    if (!exists(directory) || !isDir(directory)) {
+        writeln(Color.yellow ~ Color.bold ~ "  [!] Directory does not exist – all required files will be reported as missing." ~ Color.reset ~ "\n");
+    }
 
     Requirement[] requirements = getBSharpRequirements();
     CheckResult[] results;
@@ -156,7 +172,7 @@ CheckResult[] doctor(string directory = ".") {
         );
     } else {
         writefln(
-            "%s%s! Doctor found %d issue(s). Run 'bsharp populate' to generate missing files.%s\n", 
+            "%s%s! Doctor found %d issue(s). Run 'bsharp init' or populate missing files.%s\n", 
             Color.yellow, Color.bold, issuesFound, Color.reset
         );
     }
@@ -171,8 +187,12 @@ void populate(string directory, CheckResult[] results) {
     writeln(Color.bold ~ Color.cyan ~ "[•] Populating missing project files..." ~ Color.reset ~ "\n");
 
     size_t createdCount = 0;
+    size_t multipleCount = 0;
 
     foreach (res; results) {
+        if (res.status == CheckStatus.multiple) {
+            multipleCount++;
+        }
         if (res.status == CheckStatus.missing) {
             string targetPath = buildPath(directory, res.req.filename);
             string targetDir = dirName(targetPath);
@@ -183,8 +203,7 @@ void populate(string directory, CheckResult[] results) {
                 }
 
                 write(targetPath, res.req.templateContent);
-                writefln("  %s[+]%s", Color.green, Color.reset);
-                writefln("    Created: %s%s%s", Color.bold, targetPath, Color.reset);
+                writefln("  %s[+]%s Created: %s%s%s", Color.green, Color.reset, Color.bold, targetPath, Color.reset);
                 createdCount++;
             } catch (Exception e) {
                 writefln(
@@ -195,21 +214,27 @@ void populate(string directory, CheckResult[] results) {
         }
     }
 
-    if (createdCount == 0) {
+    if (createdCount == 0 && multipleCount == 0) {
         writeln(
             Color.gray ~ 
             "Nothing to populate. All required files are already present." ~ 
             Color.reset ~ "\n"
+        );
+    } else if (createdCount == 0 && multipleCount > 0) {
+        writefln(
+            "%s%sNo files created – %d file(s) have multiple copies. Remove duplicates manually.%s\n",
+            Color.yellow, Color.bold, multipleCount, Color.reset
         );
     } else {
         writefln(
             "\n%s%sSuccessfully populated %d file(s).%s\n", 
             Color.green, Color.bold, createdCount, Color.reset
         );
+        if (multipleCount > 0) {
+            writefln(
+                "%sNote: %d file(s) still have multiple copies. Remove duplicates manually.%s\n",
+                Color.yellow, multipleCount, Color.reset
+            );
+        }
     }
-}
-
-void main() {
-    CheckResult[] results = doctor(".");
-    populate(".", results);
 }

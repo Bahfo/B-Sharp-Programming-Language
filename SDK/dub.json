@@ -1,0 +1,14 @@
+{
+    "name": "bsharp-sdk",
+    "description": "B-Sharp SDK command-line utilities written in D",
+    "authors": ["EXcellent TechStacks"],
+    "license": "GPL-3.0",
+    "copyright": "Copyright 2026, EXcellent TechStacks",
+    "targetType": "executable",
+    "targetName": "bsharp",
+    "sourcePaths": ["."],
+    "importPaths": ["."],
+    "mainSourceFile": "shell.d",
+    "dependencies": {},
+    "buildRequirements": ["allowWarnings"]
+}
