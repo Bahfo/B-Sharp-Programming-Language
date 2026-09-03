@@ -282,10 +282,15 @@ class TestElementWiseMath(unittest.TestCase):
         _, err = execute_bsharp("[1, 2] * [1, 2, 3]")
         self.assertIsNotNone(err)
 
-    def test_division_by_zero_keeps_element(self):
-        out, _, err = output_of("writeln([1, 2, 3] / 0)")
-        self.assertIsNone(err)
-        self.assertEqual(out.strip(), "[1, 2, 3]")
+    def test_division_by_zero_is_error(self):
+        _, err = execute_bsharp("writeln([1, 2, 3] / 0)")
+        self.assertIsNotNone(err)
+        self.assertIn("division by zero", err.details.lower())
+        # typed array and negated list also error (math language semantics)
+        for src in ["writeln(-[1, 2, 3] / 0)", "var a : Number[] = [1,2,3]\nwriteln(a / 0)"]:
+            _, e2 = execute_bsharp(src)
+            self.assertIsNotNone(e2, src)
+            self.assertIn("division by zero", e2.details.lower(), src)
 
 
 class TestSliceNormalization(unittest.TestCase):

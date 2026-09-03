@@ -746,6 +746,28 @@ class Parser:
                     return res
                 return res.success(VariableReassignNode(name_tok, value_node))
 
+        # Dynamic index assignment: e.g. a[0] = 5, a[0][1] = 5, obj.prop[0] = 5
+        # Speculative parse of call chain then check for '='
+        saved_index = self.token_index
+        saved_token = self.current_token
+        saved_depth = self.depth
+        # Use a temporary ParserResults to avoid polluting res.error
+        temp_res = ParserResults()
+        lhs = temp_res.register(self.call())
+        if not temp_res.error and self.current_token.type == TOKEN_EQUAL:
+            # only IndexAccessNode (or chain ending in IndexAccess) is valid for indexed assignment
+            if isinstance(lhs, IndexAccessNode):
+                # valid indexed assignment
+                res.register(self.forward())  # consume '='
+                value_node = res.register(self.expression())
+                if res.error:
+                    return res
+                return res.success(IndexAssignNode(lhs, value_node))
+        # Not an indexed assignment – restore state
+        self.token_index = saved_index
+        self.current_token = saved_token
+        self.depth = saved_depth
+
         return self.expression()
 
     def statements(self):
@@ -1729,6 +1751,7 @@ class Interpreter:
         res = RunTimeResult()
         var_name = node.name.value
 
+        is_implicit = node.value is None
         if node.value:
             value = res.register(self.visit(node.value, context))
             if res.error:
@@ -1752,6 +1775,30 @@ class Interpreter:
                 err = value._validate_all()
                 if err:
                     return res.failure(err)
+
+        # N-V1: implicit uninitialized `var x:Number` (no `= value`) should be allowed
+        # even though Empty would otherwise be rejected for Number (V6 strict).
+        if is_implicit and isinstance(value, Empty) and data_type_class is not None and data_type_class is not Empty:
+            # bypass strict Empty check for implicit case – store directly
+            if var_name in context.variables.variables:
+                return res.failure(
+                    AssignmentError(
+                        node.pos_start,
+                        node.pos_end,
+                        f"Attempting to redefine '{var_name}' which was already defined.",
+                    )
+                )
+            # handle const deep copy if needed (though value is Empty, no list)
+            context.variables.variables[var_name] = {
+                "type": data_type_class,
+                "value": value,
+                "is_const": node.is_const,
+            }
+            return res.success(value)
+
+        # Fix 3: alias bug — List/Array assignment must copy (deep) to avoid mutating original
+        if isinstance(value, (List, Array)):
+            value = value.copy()
 
         val, error = context.variables.set_pos(node.pos_start, node.pos_end).define(
             name=var_name,
@@ -1767,6 +1814,7 @@ class Interpreter:
     def visit_MultiVariableAssignNode(self, node, context):
         res = RunTimeResult()
 
+        is_implicit = node.value is None
         if node.value:
             value = res.register(self.visit(node.value, context))
             if res.error:
@@ -1790,6 +1838,29 @@ class Interpreter:
                 err = value._validate_all()
                 if err:
                     return res.failure(err)
+
+        if is_implicit and isinstance(value, Empty) and data_type_class is not None and data_type_class is not Empty:
+            # implicit uninitialized multi-assign – allow Empty for typed vars
+            last_val = value
+            for name_tok in node.names:
+                var_name = name_tok.value
+                if var_name in context.variables.variables:
+                    return res.failure(
+                        AssignmentError(
+                            name_tok.pos_start,
+                            name_tok.pos_end,
+                            f"Attempting to redefine '{var_name}' which was already defined.",
+                        )
+                    )
+                # copy for lists (though value is Empty, no need)
+                assigned_value = value.copy() if isinstance(value, (List, Array)) else value
+                context.variables.variables[var_name] = {
+                    "type": data_type_class,
+                    "value": assigned_value,
+                    "is_const": node.is_const,
+                }
+                last_val = assigned_value
+            return res.success(last_val)
 
         last_val = value
         for name_tok in node.names:
@@ -1836,6 +1907,10 @@ class Interpreter:
                     if val_err:
                         return res.failure(val_err)
                     break
+
+        # Fix 3: reassignment alias — copy List/Array to keep variable independence
+        if isinstance(value, (List, Array)):
+            value = value.copy()
 
         val, error = context.variables.set_pos(node.pos_start, node.pos_end).assign(
             name=var_name, value=value
@@ -2003,6 +2078,95 @@ class Interpreter:
             parent_context=context,
         ).set_pos(node.pos_start, node.pos_end)
 
+        # F1: if promised return type, body must guarantee a `return <value>` on all paths
+        if func_value.return_type is not None:
+
+            def _always_returns(n):
+                if isinstance(n, ReturnNode):
+                    return n.node_to_return is not None
+                if isinstance(n, IfNode):
+                    # all branches must always return and else must exist
+                    if n.else_case is None:
+                        return False
+                    for _, expr in n.cases:
+                        if not _always_returns(expr):
+                            return False
+                    if not _always_returns(n.else_case):
+                        return False
+                    return True
+                if isinstance(n, StatementsNode):
+                    for s in n.statement_nodes:
+                        if _always_returns(s):
+                            return True
+                    return False
+                if isinstance(n, WhileNode):
+                    return False
+                if isinstance(n, ForNode):
+                    return False
+                return False
+
+            if not _always_returns(body_node):
+                return res.failure(
+                    B_SharpSyntaxError(
+                        node.var_name_tok.pos_start,
+                        node.var_name_tok.pos_end,
+                        f"Function '{func_name}' promises return type '{func_value.return_type.__name__}' but not all code paths return a value. Ensure every branch ends with 'return <value>'.",
+                    )
+                )
+
+        # Emit warnings for unreachable code after return (for any function)
+        def _always_returns_for_unreachable(n):
+            if isinstance(n, ReturnNode):
+                return n.node_to_return is not None or True  # any return dominates
+            if isinstance(n, IfNode):
+                if n.else_case is None:
+                    return False
+                for _, expr in n.cases:
+                    if not _always_returns_for_unreachable(expr):
+                        return False
+                return _always_returns_for_unreachable(n.else_case)
+            if isinstance(n, StatementsNode):
+                for s in n.statement_nodes:
+                    if _always_returns_for_unreachable(s):
+                        return True
+                return False
+            return False
+
+        def _emit_unreachable(stmts):
+            if isinstance(stmts, StatementsNode):
+                seen_return = False
+                for s in stmts.statement_nodes:
+                    if seen_return:
+                        try:
+                            w = UnreachableCodeWarning(
+                                s.pos_start,
+                                s.pos_end,
+                                f"Unreachable code after 'return' in function '{func_name}' – this statement will be ignored.",
+                            )
+                            print(w, end="", file=sys.stderr)
+                        except Exception:
+                            pass
+                    # check if this statement always returns
+                    if _always_returns_for_unreachable(s):
+                        seen_return = True
+                    # recurse into nested blocks for internal unreachable
+                    if isinstance(s, IfNode):
+                        for _, expr in s.cases:
+                            _emit_unreachable(expr)
+                        if s.else_case:
+                            _emit_unreachable(s.else_case)
+                    elif isinstance(s, WhileNode):
+                        _emit_unreachable(s.body_node)
+                    elif isinstance(s, ForNode):
+                        _emit_unreachable(s.body_node)
+                    elif isinstance(s, StatementsNode):
+                        _emit_unreachable(s)
+
+        try:
+            _emit_unreachable(body_node)
+        except Exception:
+            pass
+
         val, error = context.variables.set_pos(node.pos_start, node.pos_end).define(
             name=func_name,
             data_type=Function,
@@ -2116,25 +2280,40 @@ class Interpreter:
             )
             return res.success(Number(size).set_context(context).set_pos(*pos))
 
-        type_names = {
-            List: "List",
-            Array: obj.__class__.__name__,
-            String: "String",
-            Number: "Number",
-            Boolean: "Bool",
-            Empty: "Empty",
-            NaN: "NaN",
-            Inf: "Inf",
-            Function: "Function",
-            BuiltinFunction: "Function",
-        }
-        for value_type, name in type_names.items():
-            if isinstance(obj, value_type):
-                if _property == "type":
-                    return res.success(
-                        String(name).set_context(context).set_pos(*pos)
-                    )
-                break
+        # Typed arrays must be checked before base Array/List
+        if isinstance(obj, NumberArray):
+            type_name = "Number[]"
+        elif isinstance(obj, StringArray):
+            type_name = "String[]"
+        elif isinstance(obj, BooleanArray):
+            type_name = "Bool[]"
+        elif isinstance(obj, EmptyArray):
+            type_name = "Empty[]"
+        elif isinstance(obj, Array):
+            type_name = "Array"
+        elif isinstance(obj, List):
+            type_name = "List"
+        elif isinstance(obj, String):
+            type_name = "String"
+        elif isinstance(obj, Number):
+            type_name = "Number"
+        elif isinstance(obj, Boolean):
+            type_name = "Bool"
+        elif isinstance(obj, Empty):
+            type_name = "Empty"
+        elif isinstance(obj, NaN):
+            type_name = "NaN"
+        elif isinstance(obj, Inf):
+            type_name = "Inf"
+        elif isinstance(obj, (Function, BuiltinFunction)):
+            type_name = "Function"
+        else:
+            type_name = type(obj).__name__
+
+        if _property == "type":
+            return res.success(
+                String(type_name).set_context(context).set_pos(*pos)
+            )
 
         expected = "'length' or 'size'" if isinstance(obj, sized_types) else "'type'"
         return res.failure(
@@ -2196,6 +2375,55 @@ class Interpreter:
 
         return res.failure(
             RunTimeError(node.pos_start, node.pos_end, "Given type is not indexable.")
+        )
+
+    def visit_IndexAssignNode(self, node, context):
+        res = RunTimeResult()
+        # Resolve the target container and index
+        # target is an IndexAccessNode (possibly nested)
+        target = node.target
+
+        # We need to get the object that holds the index we assign to.
+        # For `a[0][1] = v`, target is IndexAccessNode( IndexAccessNode(a,0), 1 )
+        # So we visit target.node to get the inner container, then assign at target.index_node
+        # For simplicity, evaluate the container chain fully:
+        # Use recursion: peel off outermost index, evaluate the inner container via visit
+        container_node = target.node
+        index_node = target.index_node
+
+        container = res.register(self.visit(container_node, context))
+        if res.error:
+            return res
+        index_val = res.register(self.visit(index_node, context))
+        if res.error:
+            return res
+        value = res.register(self.visit(node.value_node, context))
+        if res.error:
+            return res
+
+        if isinstance(container, (List, Array)):
+            i, err = self._require_int(index_val, node)
+            if err:
+                return res.failure(err)
+            # assign_at handles negative wrap, dynamic growth, and const check
+            _, err = container.assign_at(i, value)
+            if err:
+                return res.failure(err)
+            return res.success(
+                value.set_context(context).set_pos(node.pos_start, node.pos_end)
+            )
+
+        if isinstance(container, String):
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    "Cannot assign to string index (strings are immutable).",
+                )
+            )
+
+        return res.failure(
+            RunTimeError(node.pos_start, node.pos_end, "Target of assignment is not indexable.")
         )
 
     def _resolve_slice_bounds(self, node, context, res, length):

@@ -1,11 +1,227 @@
-const x = 12;
+// ============================================================
+// B-Sharp Functions – Comprehensive Edge Cases
+// Covers: definition, typed params/return, recursion, closure,
+//         missing return, multiple returns, shadowing, scope,
+//         higher-order, redefinition, call depth
+// ============================================================
 
-fn testing_scope() -> {
-    var x = x + 13;
-    var z = 12;
-    return x, z;
+// 1. Simple typed function
+fn add(x : Number, y : Number) -> Number {
+    return x + y
 }
+writeln("1. add(2,3):")
+writeln(add(2, 3))
 
-z = z + 1
+// 2. Untyped params still work
+fn greet(name) {
+    return "hi " + name
+}
+writeln(greet("BSharp"))
 
-testing_scope()
+// 3. Return type mismatch – should error
+fn badRet() -> Number {
+    return "hi"
+}
+// writeln(badRet()) // EXPECT ERROR: returned String expected Number
+
+// 4. Param type mismatch on call – should error (validated via EnvironmentVariable)
+fn needNum(x : Number) -> Number {
+    return x * 2
+}
+writeln(needNum(5))
+// needNum("hi") // EXPECT ERROR: Cannot assign String to Number param
+
+// 5. Wrong arity – too few / too many
+// add(1) // EXPECT ERROR: expects 2 got 1
+// add(1,2,3) // EXPECT ERROR
+
+// 6. Recursion – factorial
+fn fact(n : Number) -> Number {
+    if (n == 0) {
+        return 1
+    } else {
+        return n * fact(n - 1)
+    }
+}
+writeln("6. fact(5):")
+writeln(fact(5))
+writeln(fact(0))
+
+// 7. Mutual recursion-ish and deep recursion limit (500 max)
+fn countDown(n : Number) -> Number {
+    if (n <= 0) {
+        return 0
+    } else {
+        return countDown(n - 1)
+    }
+}
+writeln(countDown(10))
+
+// infinite recursion – should hit max call depth
+// fn infinite() { infinite() }
+// infinite() // EXPECT ERROR: Maximum call depth exceeded
+
+// 8. Missing return – returns none implicitly (BUG: should warn but doesn't)
+fn noReturn() {
+    var x = 5
+}
+writeln("8. noReturn():")
+writeln(noReturn())
+writeln(noReturn().type)
+
+// Typed function without return – definition itself now errors per F1
+// fn typedNoReturn() -> Number {
+//     var x = 5
+// } // EXPECT ERROR: Function promises Number but no return <value>
+
+// 9. Multiple returns in different branches
+fn maxVal(a : Number, b : Number) -> Number {
+    if (a > b) {
+        return a
+    } else {
+        return b
+    }
+}
+writeln(maxVal(10, 20))
+writeln(maxVal(30, 5))
+
+// 10. Return outside function – parser allows but interpreter must error
+// return 5 // EXPECT ERROR: Cannot use return outside function
+
+// 11. Nested function definitions
+fn outer() -> Number {
+    fn inner() -> Number {
+        return 42
+    }
+    return inner()
+}
+writeln("11. nested fn:")
+writeln(outer())
+
+// 12. Function variable assignment (shadowing doc calls it shadowing)
+fn base(x : Number) -> Number { return x * 10 }
+var alias = base
+writeln(alias(5))
+writeln(base(5))
+
+// 13. Parameter shadows function name – should error ShadowingError
+// fn foo(foo : Number) { return foo } // EXPECT ERROR: shadowing
+
+// 14. Duplicate param name – should error
+// fn dup(a : Number, a : Number) { return a } // EXPECT ERROR
+
+// 15. Function redefinition – should error
+// fn redef() { return 1 }
+// fn redef() { return 2 } // EXPECT ERROR: already defined
+
+// 16. Closure – captures parent scope dynamically (BUG: shows dynamic not snapshot)
+var g = 10
+fn useGlobal(x : Number) -> Number {
+    return g + x
+}
+writeln("16. closure dynamic:")
+writeln(useGlobal(5))
+g = 20
+writeln(useGlobal(5))
+writeln("   g now:")
+writeln(g)
+
+// Outer var accessed inside function – scope chain
+var outerVar = 100
+fn readOuter() -> Number {
+    return outerVar
+}
+writeln(readOuter())
+outerVar = 999
+writeln(readOuter())
+
+// 17. Function-local var does not leak
+fn localTest() -> Number {
+    var secret = 123
+    return secret
+}
+writeln(localTest())
+// writeln(secret) // EXPECT ERROR: not defined
+
+// 18. Function with list param and typed array coercion
+fn sumArr(arr : Number[]) -> Number {
+    var s = 0
+    for (var i = 0; i < arr.length; i++) {
+        s = s + arr[i]
+    }
+    return s
+}
+var nums : Number[] = [1, 2, 3, 4]
+writeln("18. sumArr:")
+writeln(sumArr(nums))
+// sumArr([1, "hi"]) // EXPECT ERROR: type validation
+var plainList = [1, 2, 3]
+writeln(sumArr(plainList))
+
+// 19. Function returning typed array
+fn makeArr() -> Number[] {
+    return [10, 20, 30]
+}
+var resArr = makeArr()
+writeln(resArr)
+writeln(resArr.type)
+
+// 20. Function returning list vs array type confusion
+fn makePlain() {
+    return [1, 2, 3]
+}
+writeln(makePlain().type)
+
+// 21. Anonymous function not allowed
+// fn (x, y) { return x + y } // EXPECT SYNTAX ERROR
+
+// 22. Early return stops execution
+fn early(n : Number) -> Number {
+    if (n > 10) {
+        return 999
+    }
+    return n
+}
+writeln(early(5))
+writeln(early(20))
+
+// 23. Return without value -> none
+fn retNone() {
+    return
+}
+writeln(retNone())
+writeln(retNone().type)
+
+// 24. While inside function with return
+fn findFirstEven(limit : Number) -> Number {
+    var i = 0
+    while (i < limit) {
+        if (i ~ 2 == 0) {
+            // C-style modulo 0 means even
+        }
+        if (i % 2 == 0) {
+            // integer division check; need even
+        }
+        if (i ~ 2 == 0) {
+            // keep placeholder
+        }
+        i = i + 1
+    }
+    return -1
+}
+writeln(findFirstEven(5))
+
+// 25. Realistic: retry pattern with helper
+fn isEven(n : Number) -> Bool {
+    return n ~ 2 == 0
+}
+fn filterEvens(arr : Number[]) -> Number[] {
+    var out : Number[] = []
+    for (var i = 0; i < arr.length; i++) {
+        if (isEven(arr[i])) {
+            out.push(arr[i])
+        }
+    }
+    return out
+}
+writeln(filterEvens([1, 2, 3, 4, 5, 6]))

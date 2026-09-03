@@ -9,4 +9,6 @@ HINTS = {
     "Double Floating Assigned Error.": "a number literal can only contain one decimal point",
     "Circular Import Error.": "remove the circular dependency between the imported files",
     "Shadowing Error": "use a different parameter name to avoid shadowing the function name",
+    "Unreachable Code": "remove or guard the unreachable code after 'return'",
+    "Precision Loss": "consider using smaller exponents or a big-integer library",
 }

@@ -1,4 +1,5 @@
 import sys
+import time
 
 from B_Sharp.errors import RunTimeError
 from B_Sharp.ASTNodes.instances import *
@@ -84,7 +85,9 @@ def _format(args, context, call_node):
             None, None, "First argument to 'format' must be a String."
         )
     fmt_map = {str(i): str(arg) for i, arg in enumerate(args[1:])}
-    result = re.sub(r"\{(\d+)\}", lambda m: fmt_map.get(m.group(1), m.group(0)), template.value)
+    result = re.sub(
+        r"\{(\d+)\}", lambda m: fmt_map.get(m.group(1), m.group(0)), template.value
+    )
     return String(result), None
 
 
@@ -147,9 +150,16 @@ def _to_number(args, context, call_node):
     if isinstance(val, Number):
         return val, None
     if isinstance(val, String):
+        s = val.value.strip()
         try:
-            num = float(val.value) if "." in val.value else int(val.value)
-            return Number(num), None
+            # Handle scientific notation and floats vs ints
+            low = s.lower()
+            if "." in s or "e" in low:
+                num = float(s)
+                # keep as float (consistent with lexer sci notation)
+                return Number(num), None
+            else:
+                return Number(int(s)), None
         except ValueError:
             return None, RunTimeError(
                 None, None, f"Cannot convert '{val.value}' to a number."
@@ -170,6 +180,12 @@ def _to_string(args, context, call_node):
     return String(str(val)), None
 
 
+def _time_(args, context, call_node):
+    if len(args) != 0:
+        return None, RunTimeError(None, None, "'time' function requires no arguments.")
+    return Number(time.time())
+
+
 BUILTIN_FUNCTIONS = {
     "write": _write,
     "writeln": _writeln,
@@ -182,6 +198,7 @@ BUILTIN_FUNCTIONS = {
     "is_Bool": _is_bool,
     "to_Number": _to_number,
     "to_String": _to_string,
+    "time": _time_,
 }
 
 

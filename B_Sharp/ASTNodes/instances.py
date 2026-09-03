@@ -9,6 +9,7 @@
 from B_Sharp.errors import *
 
 import math
+import sys
 
 
 class Value:
@@ -262,6 +263,16 @@ class Number(Value):
                                 self.pos_end,
                                 "Result too large to represent.",
                             )
+                        # Emit precision loss warning per D3 requirement
+                        try:
+                            warn = PrecisionLossWarning(
+                                self.pos_start,
+                                self.pos_end,
+                                f"Huge power {base}^{exponent} approximated as float; precision may be lost.",
+                            )
+                            print(warn, end="", file=sys.stderr)
+                        except Exception:
+                            pass
                         return Number(approximate), None
 
                 result = base**exponent
@@ -623,6 +634,16 @@ class List(Value):
         self.set_pos()
         self.set_context()
         self.list_of_elements = list_of_elements
+        self.is_const = False
+
+    def _check_mutable(self):
+        if getattr(self, "is_const", False):
+            return ModificationError(
+                self.pos_start,
+                self.pos_end,
+                "Cannot mutate a const list/array (it is immutable). Use 'var' for mutable collections.",
+            )
+        return None
 
     # ---------- index helpers ----------
 
@@ -658,6 +679,9 @@ class List(Value):
 
     def push(self, element, index=None):
         """Insert at index (or append when index is omitted). In place."""
+        err = self._check_mutable()
+        if err:
+            return None, err
         if index is None:
             self.list_of_elements.append(element)
             return None, None
@@ -669,11 +693,17 @@ class List(Value):
 
     def append(self, element):
         """Append to the end. In place."""
+        err = self._check_mutable()
+        if err:
+            return None, err
         self.list_of_elements.append(element)
         return None, None
 
     def swap(self, element, index):
         """Replace the element at index. In place."""
+        err = self._check_mutable()
+        if err:
+            return None, err
         i, err = self._resolve_access_index(index)
         if err:
             return None, err
@@ -682,6 +712,9 @@ class List(Value):
 
     def delete(self, index):
         """Remove a single element by index. In place."""
+        err = self._check_mutable()
+        if err:
+            return None, err
         i, err = self._resolve_access_index(index)
         if err:
             return None, err
@@ -689,22 +722,52 @@ class List(Value):
         return None, None
 
     def drop(self, start, end):
-        """Remove slice [start:end] in place; return it as a new List."""
+        """Remove slice [start:end] in place; return it as a new List. Clamps like slice `l[s..e]`."""
+        err = self._check_mutable()
+        if err:
+            return None, err
         n = len(self.list_of_elements)
         s, e = start, end
         if s < 0:
             s += n
         if e < 0:
             e += n
-        if s < 0 or e < 0 or s > e or e > n:
-            return None, RunTimeError(
-                self.pos_start,
-                self.pos_end,
-                f"Invalid drop range [{start}:{end}] for length {n}.",
-            )
+        s = max(0, min(s, n))
+        e = max(0, min(e, n))
+        if s > e:
+            s = e
         removed = self.list_of_elements[s:e]
         del self.list_of_elements[s:e]
         return List(removed), None
+
+    def assign_at(self, index, element):
+        """Dynamic index assignment: replaces if in bounds, extends if at/past end."""
+        err = self._check_mutable()
+        if err:
+            return None, err
+        n = len(self.list_of_elements)
+        i = index
+        if i < 0:
+            i += n
+        if i < 0:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                f"Index {index} is out of bounds for length {n}.",
+            )
+        if i < n:
+            # validate element type if this is a typed Array (overridden in Array)
+            self.list_of_elements[i] = element
+            return None, None
+        # dynamic growth: extend with none (Empty) up to i, then append
+        while len(self.list_of_elements) < i:
+            self.list_of_elements.append(Empty().set_pos(self.pos_start, self.pos_end).set_context(self.context))
+        self.list_of_elements.append(element)
+        # if we extended, we now have i+1 elements; but if i == n we just appended, if i > n we padded
+        # For i == n case, the while loop didn't run and append gives correct
+        # For i > n, we padded to i then appended -> length i+1 correct
+        # However the above does: while len < i: append Empty, then append element -> for i = n+5, we pad 5 empties then element
+        return None, None
 
     # ---------- arithmetic ----------
 
@@ -761,10 +824,25 @@ class List(Value):
 
     def division(self, other):
         if isinstance(other, Number):
-            # Scalar-vector division, same rules as element-wise division.
-            new_elements = self._element_wise(
-                self.list_of_elements, other, lambda el, o: el.division(o)
-            )
+            # Fix 5: division by zero must be a hard error (math language semantics).
+            # Keep silent refusal for non-numeric element types (e.g. "x" / 2),
+            # but propagate div-by-zero.
+            if other.value == 0:
+                return None, RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    "Unallowed division by zero.",
+                )
+            new_elements = []
+            for element in self.list_of_elements:
+                res, error = element.division(other)
+                if error:
+                    if error.details and "division by zero" in error.details.lower():
+                        return None, error
+                    # Silent refusal for type errors (e.g. "x" / 2) preserves size
+                    new_elements.append(element)
+                else:
+                    new_elements.append(res)
             return (
                 List(new_elements)
                 .set_context(self.context)
@@ -808,7 +886,13 @@ class List(Value):
         return Boolean(not res.value), None
 
     def copy(self):
-        copy = List(self.list_of_elements[:])
+        new_elements = []
+        for el in self.list_of_elements:
+            if isinstance(el, (List, Array)):
+                new_elements.append(el.copy())
+            else:
+                new_elements.append(el)
+        copy = List(new_elements)
         copy.set_pos(self.pos_start, self.pos_end)
         copy.set_context(self.context)
         return copy
@@ -825,6 +909,7 @@ class Array(List):
         self.set_pos()
         self.set_context()
         self.list_of_elements = list_of_elements if list_of_elements is not None else []
+        self.is_const = False
 
     # Mutations validate the element type first, then behave exactly like a list.
 
@@ -848,8 +933,41 @@ class Array(List):
 
     def _validate_element(self, element):
         if isinstance(element, Empty):
-            return None
+            # V6: only Empty[] may hold none; Number[]/String[]/Bool[] must not
+            if self.element_type is Empty:
+                return None
+            return RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                f"Expected {self.element_type.__name__} element, got Empty (none). Use Empty[] for none values.",
+            )
         if isinstance(element, self.element_type):
+            return None
+        # Support arrays of arrays: allow List (including typed Array) whose
+        # leaves are all of the expected element type. Empty only allowed for Empty[].
+        if isinstance(element, List):
+            stack = [element]
+            while stack:
+                cur = stack.pop()
+                for item in cur.list_of_elements:
+                    if isinstance(item, Empty):
+                        if self.element_type is Empty:
+                            continue
+                        return RunTimeError(
+                            self.pos_start,
+                            self.pos_end,
+                            f"Expected {self.element_type.__name__} element, got Empty inside nested list.",
+                        )
+                    if isinstance(item, self.element_type):
+                        continue
+                    if isinstance(item, List):
+                        stack.append(item)
+                        continue
+                    return RunTimeError(
+                        self.pos_start,
+                        self.pos_end,
+                        f"Expected {self.element_type.__name__} element, got {type(item).__name__} inside nested list.",
+                    )
             return None
         return RunTimeError(
             self.pos_start,
@@ -879,6 +997,12 @@ class Array(List):
 
     def division(self, other):
         if isinstance(other, Number):
+            if other.value == 0:
+                return None, RunTimeError(
+                    self.pos_start,
+                    self.pos_end,
+                    "Unallowed division by zero.",
+                )
             elements, error = List.division(self, other)
             if error:
                 return None, error
@@ -904,13 +1028,83 @@ class Array(List):
         return Boolean(False), None
 
     def _new_array(self, elements):
-        arr = type(self)(elements)
+        if type(self) is Array:
+            arr = Array(self.element_type, elements)
+        else:
+            arr = type(self)(elements)
         arr.set_pos(self.pos_start, self.pos_end)
         arr.set_context(self.context)
         return arr
 
     def copy(self):
-        return self._new_array(self.list_of_elements[:])
+        new_elements = []
+        for el in self.list_of_elements:
+            if isinstance(el, (List, Array)):
+                new_elements.append(el.copy())
+            else:
+                new_elements.append(el)
+        return self._new_array(new_elements)
+
+    def drop(self, start, end):
+        """Remove slice [start:end] in place; return it as same typed array. Clamps like slice."""
+        err = self._check_mutable()
+        if err:
+            return None, err
+        n = len(self.list_of_elements)
+        s, e = start, end
+        if s < 0:
+            s += n
+        if e < 0:
+            e += n
+        s = max(0, min(s, n))
+        e = max(0, min(e, n))
+        if s > e:
+            s = e
+        removed = self.list_of_elements[s:e]
+        del self.list_of_elements[s:e]
+        return self._new_array(removed), None
+
+    def assign_at(self, index, element):
+        """Dynamic assignment for typed arrays – validates type then delegates with type-appropriate padding."""
+        err = self._validate_element(element)
+        if err:
+            return None, err
+        err = self._check_mutable()
+        if err:
+            return None, err
+        n = len(self.list_of_elements)
+        i = index
+        if i < 0:
+            i += n
+        if i < 0:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                f"Index {index} is out of bounds for length {n}.",
+            )
+        if i < n:
+            self.list_of_elements[i] = element
+            return None, None
+        # dynamic growth: pad with type-default values
+        def _default():
+            if self.element_type is Number:
+                return Number(0).set_pos(self.pos_start, self.pos_end).set_context(self.context)
+            if self.element_type is String:
+                return String("").set_pos(self.pos_start, self.pos_end).set_context(self.context)
+            if self.element_type is Boolean:
+                return Boolean(False).set_pos(self.pos_start, self.pos_end).set_context(self.context)
+            if self.element_type is Empty:
+                return Empty().set_pos(self.pos_start, self.pos_end).set_context(self.context)
+            if self.element_type is Inf:
+                return Inf().set_pos(self.pos_start, self.pos_end).set_context(self.context)
+            if self.element_type is NaN:
+                return NaN().set_pos(self.pos_start, self.pos_end).set_context(self.context)
+            return Empty().set_pos(self.pos_start, self.pos_end).set_context(self.context)
+
+        while len(self.list_of_elements) < i:
+            self.list_of_elements.append(_default())
+        self.list_of_elements.append(element)
+        return None, None
 
     def __repr__(self):
         return f"{self.list_of_elements}"
@@ -1030,7 +1224,41 @@ class EnvironmentVariable:
         if type_error:
             return None, type_error
 
-        # 3. Store symbol entry
+        # 3. For const collections, deep copy so `const b = a` does not mutate `a`
+        if is_const and isinstance(value, (List, Array)):
+            def _deep_copy(v):
+                if isinstance(v, Array):
+                    new_elements = []
+                    for el in v.list_of_elements:
+                        if isinstance(el, (List, Array)):
+                            new_elements.append(_deep_copy(el))
+                        else:
+                            new_elements.append(el)
+                    if type(v) is Array:
+                        new_v = Array(v.element_type, new_elements)
+                    else:
+                        new_v = type(v)(new_elements)
+                    new_v.set_pos(v.pos_start, v.pos_end)
+                    new_v.set_context(v.context)
+                    new_v.is_const = True
+                    return new_v
+                elif isinstance(v, List):
+                    new_elements = []
+                    for el in v.list_of_elements:
+                        if isinstance(el, (List, Array)):
+                            new_elements.append(_deep_copy(el))
+                        else:
+                            new_elements.append(el)
+                    new_v = List(new_elements)
+                    new_v.set_pos(v.pos_start, v.pos_end)
+                    new_v.set_context(v.context)
+                    new_v.is_const = True
+                    return new_v
+                return v
+
+            value = _deep_copy(value)
+
+        # 4. Store symbol entry
         self.variables[name] = {
             "type": data_type,
             "value": value,
@@ -1128,8 +1356,8 @@ class EnvironmentVariable:
                 f"Cannot assign value of type {val_type_str} to a variable declared with Empty.",
             )
 
-        # Strongly typed variable will accepts target type OR Empty (none)
-        if isinstance(value, data_type) or isinstance(value, Empty):
+        # Strongly typed variable: only accepts exact type (Empty not allowed for non-Empty types)
+        if isinstance(value, data_type):
             return None
 
         val_type_str = type(value).__name__

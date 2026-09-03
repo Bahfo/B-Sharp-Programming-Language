@@ -7,3 +7,4 @@ Plugins/vscode/bsharp-language-support/package.json
 *.pyo
 *.pyd
 /.ruff_cache
+Tests/

@@ -33,3 +33,34 @@ def format(
 ╰─> {BLUE}HINT{RESET}: {error_hint}
 """
     return result
+
+
+def format_warning(
+    warning_message: list,
+    warning_column,
+    warning_type,
+    warning_line,
+    warning_code,
+    warning_hint,
+    file,
+):
+    """
+    Warning formatting function – yellow header instead of red.
+    """
+
+    column = max(0, int(warning_column) - 1)
+    pointer = " " * column + "^"
+
+    formatted_msgs = "\n".join(f"│   {line}" for line in warning_message)
+
+    result = f"""{BOLD_YELLOW}Warning: {warning_type}{RESET}
+╭─ {file}: in Line {warning_line}: Col {warning_column}
+│  A warning has been raised: 
+│
+├─> {warning_code}
+│   {BOLD_YELLOW}{pointer}{RESET}
+{formatted_msgs}
+│
+╰─> {BLUE}HINT{RESET}: {warning_hint}
+"""
+    return result

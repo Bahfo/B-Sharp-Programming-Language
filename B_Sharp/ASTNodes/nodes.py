@@ -284,6 +284,14 @@ class SliceNode:
         self.pos_end = pos_end
 
 
+class IndexAssignNode:
+    def __init__(self, target, value_node):
+        self.target = target  # IndexAccessNode (may be nested)
+        self.value_node = value_node
+        self.pos_start = target.pos_start
+        self.pos_end = value_node.pos_end
+
+
 class MethodCallNode:
     def __init__(self, object_node, method_name_tok, arg_nodes, pos_end=None):
         self.object_node = object_node
