@@ -55,6 +55,7 @@ TOKEN_DOTDOT = "TOKEN_DOTDOT"
 
 # All Keywords
 KEYWORDS = [
+    "do",
     "or",
     "if",
     "fn",
@@ -72,15 +73,18 @@ KEYWORDS = [
     "elif",
     "then",
     "none",
+    "pass",
     "true",
     "false",
     "using",
+    "break",
     "const",
     "while",
     "Empty",
     "Number",
     "String",
     "return",
+    "continue",
     "function",
 ]
 

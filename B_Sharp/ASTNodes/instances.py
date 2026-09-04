@@ -6,7 +6,7 @@
 # Module: instances.py: All B_Sharp datatypes and environment
 # needed-to-define keyword instances (functions, variables, etc.).
 
-from B_Sharp.errors import *
+from B_Sharp.Errors.errors import *
 
 import math
 import sys
@@ -761,7 +761,9 @@ class List(Value):
             return None, None
         # dynamic growth: extend with none (Empty) up to i, then append
         while len(self.list_of_elements) < i:
-            self.list_of_elements.append(Empty().set_pos(self.pos_start, self.pos_end).set_context(self.context))
+            self.list_of_elements.append(
+                Empty().set_pos(self.pos_start, self.pos_end).set_context(self.context)
+            )
         self.list_of_elements.append(element)
         # if we extended, we now have i+1 elements; but if i == n we just appended, if i > n we padded
         # For i == n case, the while loop didn't run and append gives correct
@@ -1085,21 +1087,48 @@ class Array(List):
         if i < n:
             self.list_of_elements[i] = element
             return None, None
+
         # dynamic growth: pad with type-default values
         def _default():
             if self.element_type is Number:
-                return Number(0).set_pos(self.pos_start, self.pos_end).set_context(self.context)
+                return (
+                    Number(0)
+                    .set_pos(self.pos_start, self.pos_end)
+                    .set_context(self.context)
+                )
             if self.element_type is String:
-                return String("").set_pos(self.pos_start, self.pos_end).set_context(self.context)
+                return (
+                    String("")
+                    .set_pos(self.pos_start, self.pos_end)
+                    .set_context(self.context)
+                )
             if self.element_type is Boolean:
-                return Boolean(False).set_pos(self.pos_start, self.pos_end).set_context(self.context)
+                return (
+                    Boolean(False)
+                    .set_pos(self.pos_start, self.pos_end)
+                    .set_context(self.context)
+                )
             if self.element_type is Empty:
-                return Empty().set_pos(self.pos_start, self.pos_end).set_context(self.context)
+                return (
+                    Empty()
+                    .set_pos(self.pos_start, self.pos_end)
+                    .set_context(self.context)
+                )
             if self.element_type is Inf:
-                return Inf().set_pos(self.pos_start, self.pos_end).set_context(self.context)
+                return (
+                    Inf()
+                    .set_pos(self.pos_start, self.pos_end)
+                    .set_context(self.context)
+                )
             if self.element_type is NaN:
-                return NaN().set_pos(self.pos_start, self.pos_end).set_context(self.context)
-            return Empty().set_pos(self.pos_start, self.pos_end).set_context(self.context)
+                return (
+                    NaN()
+                    .set_pos(self.pos_start, self.pos_end)
+                    .set_context(self.context)
+                )
+            return (
+                Empty().set_pos(self.pos_start, self.pos_end).set_context(self.context)
+            )
 
         while len(self.list_of_elements) < i:
             self.list_of_elements.append(_default())
@@ -1147,11 +1176,13 @@ class Context:
         parent=None,
         parent_entry_pos=None,
         in_function=False,
+        in_loop=False,
     ):
         self.display_name = display_name
         self.parent = parent
         self.parent_entry_pos = parent_entry_pos
         self.in_function = in_function
+        self.in_loop = in_loop
         self.variables = EnvironmentVariable(parent.variables if parent else None)
 
 
@@ -1164,8 +1195,16 @@ class BodyScopeContext(Context):
     are visible outside the loop.
     """
 
-    def __init__(self, loop_context, write_to):
-        super().__init__("<loop body>", loop_context)
+    def __init__(self, loop_context, write_to, in_loop=True, in_function=None):
+        # Inherit function flag from the nearest enclosing scope
+        if in_function is None:
+            in_function = bool(
+                getattr(loop_context, "in_function", False)
+                or getattr(write_to, "in_function", False)
+            )
+        super().__init__(
+            "<loop body>", loop_context, in_loop=in_loop, in_function=in_function
+        )
         self._write_to = write_to
 
     def define(self, name, data_type, value, is_const=False):
@@ -1226,6 +1265,7 @@ class EnvironmentVariable:
 
         # 3. For const collections, deep copy so `const b = a` does not mutate `a`
         if is_const and isinstance(value, (List, Array)):
+
             def _deep_copy(v):
                 if isinstance(v, Array):
                     new_elements = []

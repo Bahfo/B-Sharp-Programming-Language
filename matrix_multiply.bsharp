@@ -1,65 +1,43 @@
-// Matrix Multiplication in B-Sharp
-// Multiplies two matrices A (m x n) and B (n x p) -> C (m x p)
+// Simple matrix multiplication code implemented in B-Sharp.
+// Dosen't measure for edge cases, but it shows that B-Sharp is 
+// completed with needed features for later upgrades.
 
-fn matMul(A, B) {
-    var rowsA = A.length
-    var colsA = A[0].length
-    var rowsB = B.length
-    var colsB = B[0].length
+fn make_zeros(num_rows : Number, num_cols : Number) -> Number[] {
+    var row : Number[] = []
+    var output_matrix : Number[] = []
 
-    if (colsA != rowsB) {
-        writeln("Error: Cannot multiply - columns of A (" + colsA + ") != rows of B (" + rowsB + ")")
-        return none
+    for (var i = 0; i < num_rows; i++) {
+        row[i] = 0;
     }
 
-    var result = []
-    for (var i = 0; i < rowsA; i++) {
-        var row = []
-        for (var j = 0; j < colsB; j++) {
-            var sum = 0
-            for (var k = 0; k < colsA; k++) {
-                sum = sum + A[i][k] * B[k][j]
-            }
-            row.push(sum)
-        }
-        result.push(row)
+    for (var j = 0; j < num_cols; j++) {
+        output_matrix[j] = row
     }
-    return result
+
+    return output_matrix
 }
 
-// Example 1: 2x3 * 3x2 = 2x2
-var A = [[1, 2, 3], [4, 5, 6]]
-var B = [[7, 8], [9, 10], [11, 12]]
-writeln("Matrix A:")
-writeln(A)
-writeln("Matrix B:")
-writeln(B)
-var C = matMul(A, B)
-writeln("A * B =")
-writeln(C)
-// Expected: [[58, 64], [139, 154]]
+fn multiply_matrices(x : Number[], y : Number[]) -> Number[] {
+    var rowsX = x.length;
+    var rowsY = y.length;
+    var colsX = x[0].length;
+    var colsY = y[0].length;
 
-// Example 2: 2x2 * 2x2 = 2x2
-var D = [[1, 2], [3, 4]]
-var E = [[5, 6], [7, 8]]
-writeln("Matrix D:")
-writeln(D)
-writeln("Matrix E:")
-writeln(E)
-var F = matMul(D, E)
-writeln("D * E =")
-writeln(F)
-// Expected: [[19, 22], [43, 50]]
+    var matrix_output : Number[] = make_zeros(colsX, rowsY)
 
-// Example 3: 3x3 identity check
-var I = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-var M = [[2, 4, 6], [1, 3, 5], [7, 8, 9]]
-writeln("I * M =")
-writeln(matMul(I, M))
-// Expected: same as M
+    for (var i = 0; i < rowsX; i++) {
+        for (var j = 0; j < colsY; j++) {
+            var sum = 0;
+            for (var k = 0; k < colsX; k++) {
+                sum = sum + x[i][k] * y[k][j];
+            }
+            matrix_output[i][j] = sum;
+        }
+    }
 
-// Example 4: Dimension mismatch handling
-var X = [[1, 2], [3, 4]]
-var Y = [[1, 2, 3]]
-writeln("Mismatched test (should show error):")
-writeln(matMul(X, Y))
+    return matrix_output;
+}
+
+var x = [[1,2],[2,3]]
+var y = [[1,2],[0,0]]
+writeln(multiply_matrices(x, y))

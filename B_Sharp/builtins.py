@@ -1,7 +1,7 @@
 import sys
 import time
 
-from B_Sharp.errors import RunTimeError
+from B_Sharp.Errors.errors import RunTimeError
 from B_Sharp.ASTNodes.instances import *
 
 

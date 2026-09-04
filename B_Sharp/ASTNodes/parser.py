@@ -2,11 +2,10 @@ import os
 import sys
 
 from B_Sharp.tokens import *
-from B_Sharp.errors import *
+from B_Sharp.Errors.errors import *
 from B_Sharp.ASTNodes.instances import *
 from B_Sharp.ASTNodes.nodes import *
 from B_Sharp.builtins import BuiltinFunction, register_builtins
-
 
 MAX_PARSE_DEPTH = 350
 _RECERSION_HEADROOM_LIMIT = 8000
@@ -711,6 +710,24 @@ class Parser:
     def statement(self):
         res = ParserResults()
 
+        if self.current_token.matches(TOKEN_KEYWORD, "pass"):
+            tok = self.current_token
+            res.register_forward()
+            self.forward()
+            return res.success(PassNode(tok.pos_start, tok.pos_end))
+
+        elif self.current_token.matches(TOKEN_KEYWORD, "break"):
+            tok = self.current_token
+            res.register_forward()
+            self.forward()
+            return res.success(BreakNode(tok.pos_start, tok.pos_end))
+
+        elif self.current_token.matches(TOKEN_KEYWORD, "continue"):
+            tok = self.current_token
+            res.register_forward()
+            self.forward()
+            return res.success(ContinueNode(tok.pos_start, tok.pos_end))
+
         if self.current_token.type == TOKEN_KEYWORD:
             if self.current_token.value in ("var", "const"):
                 return self.var_decl()
@@ -722,6 +739,8 @@ class Parser:
                 return self.if_expression()
             elif self.current_token.value == "while":
                 return self.while_expression()
+            elif self.current_token.value == "do":
+                return self.do_expression()
             elif self.current_token.value == "for":
                 return self.for_expression()
             elif self.current_token.value == "using":
@@ -751,19 +770,16 @@ class Parser:
         saved_index = self.token_index
         saved_token = self.current_token
         saved_depth = self.depth
-        # Use a temporary ParserResults to avoid polluting res.error
         temp_res = ParserResults()
         lhs = temp_res.register(self.call())
         if not temp_res.error and self.current_token.type == TOKEN_EQUAL:
-            # only IndexAccessNode (or chain ending in IndexAccess) is valid for indexed assignment
             if isinstance(lhs, IndexAccessNode):
-                # valid indexed assignment
                 res.register(self.forward())  # consume '='
                 value_node = res.register(self.expression())
                 if res.error:
                     return res
                 return res.success(IndexAssignNode(lhs, value_node))
-        # Not an indexed assignment – restore state
+
         self.token_index = saved_index
         self.current_token = saved_token
         self.depth = saved_depth
@@ -797,8 +813,6 @@ class Parser:
                 break
 
             if newline_count == 0:
-                # A closing brace terminates a block statement, so the next
-                # statement may begin on the same line ('} stmt;').
                 previous_is_rcurly = (
                     self.token_index > 0
                     and self.tokens[self.token_index - 1].type == TOKEN_RCURLY
@@ -951,6 +965,75 @@ class Parser:
 
         return res.success(WhileNode(condition, body))
 
+    def do_expression(self):
+        res = ParserResults()
+
+        if not self.current_token.matches(TOKEN_KEYWORD, "do"):
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected 'do'",
+                )
+            )
+
+        pos_start = self.current_token.pos_start.copy()
+        res.register_forward()
+        self.forward()
+
+        if not self.current_token.type == TOKEN_LCURLY:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '{' after 'do' statement.",
+                )
+            )
+
+        body = res.register(self.block())
+        if res.error:
+            return res
+
+        if not self.current_token.matches(TOKEN_KEYWORD, "while"):
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected 'while' after 'do' block.",
+                )
+            )
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type != TOKEN_LPAREN:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '(' after 'while' in do/while.",
+                )
+            )
+        res.register_forward()
+        self.forward()
+        self._skip_newlines(res)
+        condition = res.register(self.expression())
+        if res.error:
+            return res
+        self._skip_newlines(res)
+        if self.current_token.type != TOKEN_RPAREN:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected ')' after do/while condition.",
+                )
+            )
+        rparen_end = self.current_token.pos_end.copy()
+        res.register_forward()
+        self.forward()
+
+        return res.success(DoNode(body, condition, pos_start, rparen_end))
+
     def for_expression(self):
         res = ParserResults()
 
@@ -978,7 +1061,6 @@ class Parser:
         res.register_forward()
         self.forward()
 
-        # 1. Initializer: var i = 0 or i = 0
         init_node = res.register(self.statement())
         if res.error:
             return res
@@ -995,7 +1077,6 @@ class Parser:
         res.register_forward()
         self.forward()
 
-        # 2. Condition: i < 10
         condition_node = res.register(self.expression())
         if res.error:
             return res
@@ -1012,7 +1093,6 @@ class Parser:
         res.register_forward()
         self.forward()
 
-        # 3. Update expression: i++ / ++i / i = i + 1
         update_node = res.register(self.statement())
         if res.error:
             return res
@@ -1029,7 +1109,6 @@ class Parser:
         res.register_forward()
         self.forward()
 
-        # 4. Body: { ... } or then statement
         if self.current_token.type == TOKEN_LCURLY:
             body_node = res.register(self.block())
         elif self.current_token.matches(TOKEN_KEYWORD, "then"):
@@ -1331,7 +1410,8 @@ class Parser:
                             B_SharpSyntaxError(
                                 param_type.pos_start,
                                 param_type.pos_end,
-                                f"Unknown data type '{param_type.value}'. " + _VALID_TYPES_MESSAGE,
+                                f"Unknown data type '{param_type.value}'. "
+                                + _VALID_TYPES_MESSAGE,
                             )
                         )
                 else:
@@ -1396,7 +1476,8 @@ class Parser:
                                 B_SharpSyntaxError(
                                     param_type.pos_start,
                                     param_type.pos_end,
-                                    f"Unknown data type '{param_type.value}'. " + _VALID_TYPES_MESSAGE,
+                                    f"Unknown data type '{param_type.value}'. "
+                                    + _VALID_TYPES_MESSAGE,
                                 )
                             )
                     else:
@@ -1458,7 +1539,8 @@ class Parser:
                         B_SharpSyntaxError(
                             return_type_tok.pos_start,
                             return_type_tok.pos_end,
-                            f"Unknown return type '{return_type_tok.value}'. " + _VALID_TYPES_MESSAGE,
+                            f"Unknown return type '{return_type_tok.value}'. "
+                            + _VALID_TYPES_MESSAGE,
                         )
                     )
             else:
@@ -1525,6 +1607,8 @@ class RunTimeResult:
         self.error = None
         self.value = None
         self.func_return_value = None
+        self.should_break = False
+        self.should_continue = False
 
     def register(self, res):
         if isinstance(res, RunTimeResult):
@@ -1532,6 +1616,10 @@ class RunTimeResult:
                 self.error = res.error
             if res.func_return_value is not None:
                 self.func_return_value = res.func_return_value
+            if res.should_break:
+                self.should_break = True
+            if res.should_continue:
+                self.should_continue = True
             return res.value
         return res
 
@@ -1541,6 +1629,16 @@ class RunTimeResult:
 
     def success_return(self, value):
         self.func_return_value = value
+        return self
+
+    def success_break(self, value):
+        self.value = value
+        self.should_break = True
+        return self
+
+    def success_continue(self, value):
+        self.value = value
+        self.should_continue = True
         return self
 
     def failure(self, error):
@@ -1561,6 +1659,17 @@ class Interpreter:
             if getattr(current, "in_function", False):
                 return True
             current = current.parent
+        return False
+
+    def _inside_loop(self, context):
+        cur = context
+        while cur is not None:
+            if getattr(cur, "in_loop", False):
+                return True
+            if getattr(cur, "in_function", False):
+                return False
+            cur = cur.parent
+
         return False
 
     @_with_recursion_headroom
@@ -1778,7 +1887,12 @@ class Interpreter:
 
         # N-V1: implicit uninitialized `var x:Number` (no `= value`) should be allowed
         # even though Empty would otherwise be rejected for Number (V6 strict).
-        if is_implicit and isinstance(value, Empty) and data_type_class is not None and data_type_class is not Empty:
+        if (
+            is_implicit
+            and isinstance(value, Empty)
+            and data_type_class is not None
+            and data_type_class is not Empty
+        ):
             # bypass strict Empty check for implicit case – store directly
             if var_name in context.variables.variables:
                 return res.failure(
@@ -1839,7 +1953,12 @@ class Interpreter:
                 if err:
                     return res.failure(err)
 
-        if is_implicit and isinstance(value, Empty) and data_type_class is not None and data_type_class is not Empty:
+        if (
+            is_implicit
+            and isinstance(value, Empty)
+            and data_type_class is not None
+            and data_type_class is not Empty
+        ):
             # implicit uninitialized multi-assign – allow Empty for typed vars
             last_val = value
             for name_tok in node.names:
@@ -1853,7 +1972,9 @@ class Interpreter:
                         )
                     )
                 # copy for lists (though value is Empty, no need)
-                assigned_value = value.copy() if isinstance(value, (List, Array)) else value
+                assigned_value = (
+                    value.copy() if isinstance(value, (List, Array)) else value
+                )
                 context.variables.variables[var_name] = {
                     "type": data_type_class,
                     "value": assigned_value,
@@ -1927,20 +2048,40 @@ class Interpreter:
             condition_value = res.register(self.visit(condition, context))
             if res.error:
                 return res
+            if res.should_break or res.should_continue:
+                return res
+            if res.func_return_value is not None:
+                return res
 
             if condition_value.true_():
-                branch_context = Context("<if>", context, node.pos_start)
+                branch_context = Context(
+                    "<if>",
+                    context,
+                    node.pos_start,
+                    in_function=context.in_function,
+                    in_loop=context.in_loop,
+                )
                 expression_value = res.register(self.visit(expression, branch_context))
                 if res.error:
+                    return res
+                if res.should_break or res.should_continue:
                     return res
                 if res.func_return_value is not None:
                     return res
                 return res.success(expression_value)
 
         if node.else_case:
-            branch_context = Context("<if>", context, node.pos_start)
+            branch_context = Context(
+                "<if>",
+                context,
+                node.pos_start,
+                in_function=context.in_function,
+                in_loop=context.in_loop,
+            )
             else_value = res.register(self.visit(node.else_case, branch_context))
             if res.error:
+                return res
+            if res.should_break or res.should_continue:
                 return res
             if res.func_return_value is not None:
                 return res
@@ -1959,6 +2100,8 @@ class Interpreter:
             if res.error:
                 return res
             if res.func_return_value is not None:
+                return res
+            if res.should_break or res.should_continue:
                 return res
             last_value = value
 
@@ -2020,13 +2163,52 @@ class Interpreter:
             if not cond_val.true_():
                 break
 
-            body_context = BodyScopeContext(context, context)
+            body_context = BodyScopeContext(
+                context, context, in_function=context.in_function
+            )
             val = res.register(self.visit(node.body_node, body_context))
             if res.error:
                 return res
             if res.func_return_value is not None:
                 return res
 
+            if res.should_break:
+                res.should_break = False
+                break
+
+            if res.should_continue:
+                res.should_continue = False
+                continue
+
+        return res.success(
+            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
+
+    def visit_DoNode(self, node, context):
+        res = RunTimeResult()
+        while True:
+            body_ctx = BodyScopeContext(
+                context, context, in_function=context.in_function
+            )
+            val = res.register(self.visit(node.body_node, body_ctx))
+            if res.error:
+                return res
+            if res.func_return_value is not None:
+                return res
+            if res.should_break:
+                res.should_break = False
+                break
+            if res.should_continue:
+                res.should_continue = False
+            cond_val = res.register(self.visit(node.condition_node, context))
+            if res.error:
+                return res
+            if res.should_break or res.should_continue:
+                return res
+            if res.func_return_value is not None:
+                return res
+            if not cond_val.true_():
+                break
         return res.success(
             Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
         )
@@ -2034,7 +2216,13 @@ class Interpreter:
     def visit_ForNode(self, node, context):
         res = RunTimeResult()
 
-        loop_context = Context("<for>", context, node.pos_start)
+        loop_context = Context(
+            "<for>",
+            context,
+            node.pos_start,
+            in_function=context.in_function,
+            in_loop=True,
+        )
         res.register(self.visit(node.init_node, loop_context))
         if res.error:
             return res
@@ -2047,12 +2235,21 @@ class Interpreter:
             if not cond_val.true_():
                 break
 
-            body_context = BodyScopeContext(loop_context, context)
+            body_context = BodyScopeContext(
+                loop_context, context, in_function=loop_context.in_function
+            )
             val = res.register(self.visit(node.body_node, body_context))
             if res.error:
                 return res
             if res.func_return_value is not None:
                 return res
+
+            if res.should_break:
+                res.should_break = False
+                break
+
+            if res.should_continue:
+                res.should_continue = False
 
             res.register(self.visit(node.update_node, loop_context))
             if res.error:
@@ -2311,9 +2508,7 @@ class Interpreter:
             type_name = type(obj).__name__
 
         if _property == "type":
-            return res.success(
-                String(type_name).set_context(context).set_pos(*pos)
-            )
+            return res.success(String(type_name).set_context(context).set_pos(*pos))
 
         expected = "'length' or 'size'" if isinstance(obj, sized_types) else "'type'"
         return res.failure(
@@ -2423,7 +2618,9 @@ class Interpreter:
             )
 
         return res.failure(
-            RunTimeError(node.pos_start, node.pos_end, "Target of assignment is not indexable.")
+            RunTimeError(
+                node.pos_start, node.pos_end, "Target of assignment is not indexable."
+            )
         )
 
     def _resolve_slice_bounds(self, node, context, res, length):
@@ -2642,9 +2839,7 @@ class Interpreter:
             value = entry["value"]
             if hasattr(value, "copy") and isinstance(value, (List, Array)):
                 value = value.copy()
-            _, error = context.variables.set_pos(
-                node.pos_start, node.pos_end
-            ).define(
+            _, error = context.variables.set_pos(node.pos_start, node.pos_end).define(
                 name=name,
                 data_type=entry["type"],
                 value=value,
@@ -2773,3 +2968,28 @@ class Interpreter:
         return res.success(
             Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
         )
+
+    def visit_PassNode(self, node, context):
+        return RunTimeResult().success(
+            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
+
+    def visit_BreakNode(self, node, context):
+        res = RunTimeResult()
+        if not self._inside_loop(context):
+            return res.failure(
+                RunTimeError(node.pos_start, node.pos_end, "'break' outside loop.")
+            )
+        res.should_break = True
+        res.value = Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
+        return res
+
+    def visit_ContinueNode(self, node, context):
+        res = RunTimeResult()
+        if not self._inside_loop(context):
+            return res.failure(
+                RunTimeError(node.pos_start, node.pos_end, "'continue' outside loop.")
+            )
+        res.should_continue = True
+        res.value = Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
+        return res

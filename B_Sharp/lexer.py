@@ -1,5 +1,5 @@
 from B_Sharp.position import Position
-from B_Sharp.errors import *
+from B_Sharp.Errors.errors import *
 from B_Sharp.tokens import *
 
 import string

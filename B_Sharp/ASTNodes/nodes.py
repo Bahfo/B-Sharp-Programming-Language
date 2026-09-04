@@ -201,6 +201,17 @@ class WhileNode:
         return f"while ({self.condition_node}) {self.body_node}"
 
 
+class DoNode:
+    def __init__(self, body_node, condition_node, pos_start, pos_end):
+        self.body_node = body_node
+        self.condition_node = condition_node
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+    def __repr__(self):
+        return f"do {self.body_node} while ({self.condition_node})"
+
+
 class ForNode:
     def __init__(self, init_node, condition_node, update_node, body_node):
         self.init_node = init_node
@@ -321,3 +332,30 @@ class InfinityNode:
     def __init__(self, pos_start, pos_end=None):
         self.pos_start = pos_start
         self.pos_end = pos_end
+
+
+class BreakNode:
+    def __init__(self, pos_start, pos_end):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+    def __repr__(self):
+        return "break"
+
+
+class ContinueNode:
+    def __init__(self, pos_start, pos_end):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+    def __repr__(self):
+        return "continue"
+
+
+class PassNode:
+    def __init__(self, pos_start, pos_end):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+    def __repr__(self):
+        return "pass"
