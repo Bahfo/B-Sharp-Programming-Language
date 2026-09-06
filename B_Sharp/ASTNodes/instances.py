@@ -682,6 +682,9 @@ class List(Value):
         err = self._check_mutable()
         if err:
             return None, err
+        # Full isolation: deep copy nested collections on insertion
+        if isinstance(element, (List, Array)):
+            element = element.copy()
         if index is None:
             self.list_of_elements.append(element)
             return None, None
@@ -696,6 +699,8 @@ class List(Value):
         err = self._check_mutable()
         if err:
             return None, err
+        if isinstance(element, (List, Array)):
+            element = element.copy()
         self.list_of_elements.append(element)
         return None, None
 
@@ -704,6 +709,8 @@ class List(Value):
         err = self._check_mutable()
         if err:
             return None, err
+        if isinstance(element, (List, Array)):
+            element = element.copy()
         i, err = self._resolve_access_index(index)
         if err:
             return None, err
@@ -737,14 +744,23 @@ class List(Value):
         if s > e:
             s = e
         removed = self.list_of_elements[s:e]
+        # Deep copy nested collections for isolation
+        deep_removed = []
+        for el in removed:
+            if isinstance(el, (List, Array)):
+                deep_removed.append(el.copy())
+            else:
+                deep_removed.append(el)
         del self.list_of_elements[s:e]
-        return List(removed), None
+        return List(deep_removed), None
 
     def assign_at(self, index, element):
         """Dynamic index assignment: replaces if in bounds, extends if at/past end."""
         err = self._check_mutable()
         if err:
             return None, err
+        if isinstance(element, (List, Array)):
+            element = element.copy()
         n = len(self.list_of_elements)
         i = index
         if i < 0:
@@ -1063,14 +1079,22 @@ class Array(List):
         if s > e:
             s = e
         removed = self.list_of_elements[s:e]
+        deep_removed = []
+        for el in removed:
+            if isinstance(el, (List, Array)):
+                deep_removed.append(el.copy())
+            else:
+                deep_removed.append(el)
         del self.list_of_elements[s:e]
-        return self._new_array(removed), None
+        return self._new_array(deep_removed), None
 
     def assign_at(self, index, element):
         """Dynamic assignment for typed arrays – validates type then delegates with type-appropriate padding."""
         err = self._validate_element(element)
         if err:
             return None, err
+        if isinstance(element, (List, Array)):
+            element = element.copy()
         err = self._check_mutable()
         if err:
             return None, err
@@ -1457,6 +1481,10 @@ class Function(Value):
             param_name_tok, param_type_tok = self.arg_nodes[i]
             arg_value = args[i]
 
+            # Full isolation: deep copy List/Array args so caller not mutated
+            if isinstance(arg_value, (List, Array)):
+                arg_value = arg_value.copy()
+
             param_type = TYPE_MAP.get(param_type_tok.value) if param_type_tok else None
 
             if (
@@ -1471,6 +1499,10 @@ class Function(Value):
                     err = arg_value._validate_all()
                     if err:
                         return res.failure(err)
+                # Ensure typed wrapper also isolated (deep copy already done)
+            elif isinstance(arg_value, (List, Array)):
+                # Already copied above, but keep for clarity - no extra wrapper needed
+                pass
 
             _, err = exec_context.variables.set_pos(
                 param_name_tok.pos_start, param_name_tok.pos_end
@@ -1551,3 +1583,52 @@ TYPE_MAP = {
     "Bool[]": BooleanArray,
     "Empty[]": EmptyArray,
 }
+
+
+def _default_for_type(data_type_class, pos_start=None, pos_end=None, context=None):
+    """Returns type-appropriate fallback value for implicit `var x : Type;` without initializer.
+
+    Table per Docs/1_Common/2_data_types.md:136:
+      Number -> 0, String -> "", Bool -> false, Empty -> none,
+      Inf -> +inf, NaN -> nan, List/Number[]/etc -> [], no type -> none
+    """
+    def _set(v):
+        v.set_pos(pos_start, pos_end)
+        v.set_context(context)
+        return v
+
+    if data_type_class is None:
+        return _set(Empty())
+    if data_type_class is Number:
+        return _set(Number(0))
+    if data_type_class is String:
+        return _set(String(""))
+    if data_type_class is Boolean:
+        return _set(Boolean(False))
+    if data_type_class is Empty:
+        return _set(Empty())
+    if data_type_class is Inf:
+        return _set(Inf(1))
+    if data_type_class is NaN:
+        return _set(NaN())
+    if data_type_class is List:
+        return _set(List([]))
+    if data_type_class is NumberArray:
+        return _set(NumberArray([]))
+    if data_type_class is StringArray:
+        return _set(StringArray([]))
+    if data_type_class is BooleanArray:
+        return _set(BooleanArray([]))
+    if data_type_class is EmptyArray:
+        return _set(EmptyArray([]))
+    # Fallback for aliased Bool[] etc already mapped to BooleanArray, but handle generically
+    if issubclass(data_type_class, Array):
+        try:
+            return _set(data_type_class([]))
+        except Exception:
+            return _set(Empty())
+    return _set(Empty())
+
+
+# alias without underscore for star-import in parser.py
+default_for_type = _default_for_type

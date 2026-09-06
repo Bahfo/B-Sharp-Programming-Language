@@ -1861,16 +1861,20 @@ class Interpreter:
         var_name = node.name.value
 
         is_implicit = node.value is None
-        if node.value:
-            value = res.register(self.visit(node.value, context))
-            if res.error:
-                return res
-        else:
-            value = Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
 
         data_type_class = None
         if node.data_type:
             data_type_class = TYPE_MAP.get(node.data_type.value)
+
+        if is_implicit:
+            # Fallback per Docs/1_Common/2_data_types.md:136
+            value = default_for_type(
+                data_type_class, node.pos_start, node.pos_end, context
+            )
+        else:
+            value = res.register(self.visit(node.value, context))
+            if res.error:
+                return res
 
         if (
             data_type_class
@@ -1884,31 +1888,6 @@ class Interpreter:
                 err = value._validate_all()
                 if err:
                     return res.failure(err)
-
-        # N-V1: implicit uninitialized `var x:Number` (no `= value`) should be allowed
-        # even though Empty would otherwise be rejected for Number (V6 strict).
-        if (
-            is_implicit
-            and isinstance(value, Empty)
-            and data_type_class is not None
-            and data_type_class is not Empty
-        ):
-            # bypass strict Empty check for implicit case – store directly
-            if var_name in context.variables.variables:
-                return res.failure(
-                    AssignmentError(
-                        node.pos_start,
-                        node.pos_end,
-                        f"Attempting to redefine '{var_name}' which was already defined.",
-                    )
-                )
-            # handle const deep copy if needed (though value is Empty, no list)
-            context.variables.variables[var_name] = {
-                "type": data_type_class,
-                "value": value,
-                "is_const": node.is_const,
-            }
-            return res.success(value)
 
         # Fix 3: alias bug — List/Array assignment must copy (deep) to avoid mutating original
         if isinstance(value, (List, Array)):
@@ -1929,16 +1908,20 @@ class Interpreter:
         res = RunTimeResult()
 
         is_implicit = node.value is None
-        if node.value:
-            value = res.register(self.visit(node.value, context))
-            if res.error:
-                return res
-        else:
-            value = Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
 
         data_type_class = None
         if node.data_type:
             data_type_class = TYPE_MAP.get(node.data_type.value)
+
+        if is_implicit:
+            # Fallback per Docs/1_Common/2_data_types.md:136
+            value = default_for_type(
+                data_type_class, node.names[0].pos_start, node.pos_end, context
+            )
+        else:
+            value = res.register(self.visit(node.value, context))
+            if res.error:
+                return res
 
         if (
             data_type_class
@@ -1952,36 +1935,6 @@ class Interpreter:
                 err = value._validate_all()
                 if err:
                     return res.failure(err)
-
-        if (
-            is_implicit
-            and isinstance(value, Empty)
-            and data_type_class is not None
-            and data_type_class is not Empty
-        ):
-            # implicit uninitialized multi-assign – allow Empty for typed vars
-            last_val = value
-            for name_tok in node.names:
-                var_name = name_tok.value
-                if var_name in context.variables.variables:
-                    return res.failure(
-                        AssignmentError(
-                            name_tok.pos_start,
-                            name_tok.pos_end,
-                            f"Attempting to redefine '{var_name}' which was already defined.",
-                        )
-                    )
-                # copy for lists (though value is Empty, no need)
-                assigned_value = (
-                    value.copy() if isinstance(value, (List, Array)) else value
-                )
-                context.variables.variables[var_name] = {
-                    "type": data_type_class,
-                    "value": assigned_value,
-                    "is_const": node.is_const,
-                }
-                last_val = assigned_value
-            return res.success(last_val)
 
         last_val = value
         for name_tok in node.names:
@@ -2675,10 +2628,17 @@ class Interpreter:
                 return res
 
             sliced = obj.list_of_elements[start:end]
+            # Deep copy nested List/Array elements for full isolation
+            deep_sliced = []
+            for el in sliced:
+                if isinstance(el, (List, Array)):
+                    deep_sliced.append(el.copy())
+                else:
+                    deep_sliced.append(el)
             if isinstance(obj, Array):
-                result = obj._new_array(sliced)
+                result = obj._new_array(deep_sliced)
             else:
-                result = List(sliced)
+                result = List(deep_sliced)
             return res.success(
                 result.set_context(context).set_pos(node.pos_start, node.pos_end)
             )
