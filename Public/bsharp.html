@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <title></title>
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="">
+        <title>The B-Sharp Programming Language</title>
+    </head>
+    <body>
+        <div>
+            <label>The B-Sharp Programming Language (V0.1.0)</label>
+            <p>B-Sharp is a general-purpose language designed to be simple to use, portable, and controllable 
+                as much as a user wishes it to be. B-Sharp is also <strong>robust</strong> and 
+                <strong>optionally-typed</strong> by its nature.
+            </p>
+        </div>
+        <div>
+            <label>Explore Language Features</label>
+            <p>B-Sharp offers you clean syntax, it also comes with multiple declarations for the same job.</p>
+            <code>
+                fn add_two_numbers(x, y) {
+                    return x + y;
+                }
+                function add_two_numbers_remastered(x, y) {
+                    return x + y;
+                }
+            </code>
+            <p>B-Sharp follows your commands precisely, tell it to enforce typing and it does at greatest
+                checking.
+            </p>
+            <code>
+                var x : Number = 5;
+                var y : String = "Hello, Programmer!";
+            </code>
+            <p>B-Sharp is interpreted and compiled. Try it!</p>
+            <code>
+                bsharp build my_file.bsharp
+                bsharp run my_file.bsharp
+            </code>
+            <p>Don't forget to call foreign languages inside your B-Sharp code as well.</p>
+            <code>
+                __inline__(x, y) CPlusPlus {
+                    int multiply(int x, int y) {
+                        return x * y;
+                    }
+
+                    int result = multiply(5, 6);
+                } expect(result)
+            </code>
+            <p>Strong features that make the language not only make the language rich, but
+                helpful at needs.
+            </p>
+            <p>Explore macros, caller macros, type enforcement, foreign calls, and more inside B-Sharp to 
+                write your production-grade software with safe features, high compatabilty, deterministic 
+                outputs, and speed in execution.
+            </p>
+            <code>
+                !PRAGMA optmize
+                !PRAGMA enforce
+
+                optimized fn long_opertaion_to_optimize(x : Number[], y: Number[]) -> Number {
+                    // code statements ...
+                }
+
+                result : Number = long_opertaion_to_optimize(array1, array2);
+            </code>
+        </div>
+        <script src="" async defer></script>
+    </body>
+</html>

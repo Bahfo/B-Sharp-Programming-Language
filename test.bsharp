@@ -1,0 +1,9 @@
+fn test_leakage(x : Number, y : Number) {
+    if (x == 10) {
+        x = 20
+        return "Yes"
+    }
+}
+
+test_leakage(10, 4)
+writeln(var x : Number = 10)

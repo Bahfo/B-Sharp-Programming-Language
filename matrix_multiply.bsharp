@@ -20,7 +20,7 @@ fn make_zeros(num_rows : Number, num_cols : Number) -> Number[] {
 fn multiply_matrices(x : Number[], y : Number[]) -> Number[] {
     var rowsX = x.length;
     var rowsY = y.length;
-    var colsX = x[0].length;
+    var colsX = if (x[0].type == "Number") then 1 else {x[0].length};
     var colsY = y[0].length;
 
     var matrix_output : Number[] = make_zeros(colsX, rowsY)
@@ -38,6 +38,6 @@ fn multiply_matrices(x : Number[], y : Number[]) -> Number[] {
     return matrix_output;
 }
 
-var x = [[1,2],[2,3]]
+var x = [2, 3]
 var y = [[1,2],[0,0]]
 writeln(multiply_matrices(x, y))

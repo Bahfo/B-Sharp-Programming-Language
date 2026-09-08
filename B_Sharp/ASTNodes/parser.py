@@ -707,6 +707,69 @@ class Parser:
                 ListNode(list_of_elements, pos_start, self.current_token.pos_end.copy())
             )
 
+    def try_statement(self):
+        self._depth_enter()
+        try:
+            return self._try_statement()
+        finally:
+            self._depth_exit()
+
+    def _try_statement(self):
+        res = ParserResults()
+        pos_start = self.current_token.pos_start.copy()
+
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type != TOKEN_LCURLY:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '{' after 'try'.",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type == TOKEN_RCURLY:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Empty 'try' block is not allowed — it must contain at least one statement.",
+                )
+            )
+
+        body_node = res.register(self.statements())
+        if res.error:
+            return res
+
+        if self.current_token.type != TOKEN_RCURLY:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Expected '}' at end of 'try' block.",
+                )
+            )
+
+        rcurly_pos = self.current_token.pos_end.copy()
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.matches(TOKEN_KEYWORD, "catch"):
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "Unimplemented or unfound 'catch' block after 'try'.",
+                )
+            )
+
+        return res.success(TryNode(pos_start, rcurly_pos, body_node))
+
     def statement(self):
         res = ParserResults()
 
@@ -745,6 +808,8 @@ class Parser:
                 return self.for_expression()
             elif self.current_token.value == "using":
                 return self.import_module()
+            elif self.current_token.value == "try":
+                return self.try_statement()
 
         # Prefix ++i / --i
         if self.current_token.type in (TOKEN_INC, TOKEN_DEC):
@@ -2007,14 +2072,8 @@ class Interpreter:
                 return res
 
             if condition_value.true_():
-                branch_context = Context(
-                    "<if>",
-                    context,
-                    node.pos_start,
-                    in_function=context.in_function,
-                    in_loop=context.in_loop,
-                )
-                expression_value = res.register(self.visit(expression, branch_context))
+                # Leaking: `var` inside `if` must be visible outside (no new Context)
+                expression_value = res.register(self.visit(expression, context))
                 if res.error:
                     return res
                 if res.should_break or res.should_continue:
@@ -2024,14 +2083,7 @@ class Interpreter:
                 return res.success(expression_value)
 
         if node.else_case:
-            branch_context = Context(
-                "<if>",
-                context,
-                node.pos_start,
-                in_function=context.in_function,
-                in_loop=context.in_loop,
-            )
-            else_value = res.register(self.visit(node.else_case, branch_context))
+            else_value = res.register(self.visit(node.else_case, context))
             if res.error:
                 return res
             if res.should_break or res.should_continue:
@@ -2953,3 +3005,19 @@ class Interpreter:
         res.should_continue = True
         res.value = Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
         return res
+
+    def visit_TryNode(self, node, context):
+        res = RunTimeResult()
+
+        # Leaking: `var` inside `try` must be visible outside (same context, no isolation)
+        res.register(self.visit(node.body_node, context))
+        if res.error:
+            return res
+        if res.func_return_value is not None:
+            return res
+        if res.should_break or res.should_continue:
+            return res
+
+        return res.success(
+            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
