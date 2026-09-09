@@ -72,6 +72,6 @@ Which initializes you a project with all of what you need.
 Using the commands: `bsharp install <package_name>` to install a package, `bsharp uninstall <package_name>` to uninstall it, and `bsharp list` to list all available packages.
 
 ## A Word to Users
-We want to thank you very much for using B-Sharp! you appreciate your support. If you want to report an issue, a bug, or give your feedback, we are always listening. Please head to `Contributing`, `Security`, and `Feedback` for more info.
+We want to thank you very much for using B-Sharp! we appreciate your support. If you want to report an issue, a bug, or give your feedback, we are always listening. Please head to `Contributing`, `Security`, and `Feedback` for more info.
 
 *The B-Sharp Project Team*
