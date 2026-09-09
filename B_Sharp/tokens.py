@@ -86,6 +86,7 @@ KEYWORDS = [
     "Number",
     "String",
     "return",
+    "struct",
     "continue",
     "function",
 ]

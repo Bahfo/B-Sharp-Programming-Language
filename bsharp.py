@@ -2,10 +2,11 @@ import time
 import sys
 import os
 
-from B_Sharp.ASTNodes.parser import Parser, Interpreter
-from B_Sharp.ASTNodes.instances import Context
 from B_Sharp.lexer import Lexer
+from B_Sharp.ASTNodes.parser import Parser
+from B_Sharp.ASTNodes.instances import Context
 from B_Sharp.builtins import register_builtins
+from B_Sharp.ASTNodes.interpreter import Interpreter
 
 
 def run_source(file_name, source_text, context=None, measure_time=False):

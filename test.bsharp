@@ -1,9 +1,7 @@
-fn test_leakage(x : Number, y : Number) {
-    if (x == 10) {
-        x = 20
-        return "Yes"
-    }
-}
-
-test_leakage(10, 4)
-writeln(var x : Number = 10)
+struct Math { var x = 12; var y }
+var a = Math()
+a.y = writeln("Hello World") // prints Hello World, a.y becomes none
+writeln(a.y)                 // prints none – correct
+Math().y = 12                // now → MOD004: Cannot assign to field 'y' of temporary struct instance
+writeln(a.y)                 // not reached (error stops execution)
+writeln(Math())              // fresh instance prints Math { x: 12, y: none } if reached

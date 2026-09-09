@@ -1,3 +1,9 @@
+# (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved.
+# The source code of B_Sharp Programming Language.
+# The code is guarded and licensed under the GPLv3 License.
+# ----------------------------------------------------------------
+# Module: parser.py: House of Parser of B-Sharp.
+
 import os
 import sys
 
@@ -162,7 +168,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected ')'",
+                    "SYN006",
                 )
             )
 
@@ -196,7 +202,7 @@ class Parser:
             B_SharpSyntaxError(
                 tok.pos_start,
                 tok.pos_end,
-                f"Expected int, float, identifier, '+', '-', '(', or keyword, got '{tok}'",
+                "SYN007",
             )
         )
 
@@ -229,7 +235,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected 'using' keyword to import a module",
+                    "SYN008",
                 )
             )
 
@@ -241,7 +247,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Module import name is expected to be a valid string file path",
+                    "SYN009",
                 )
             )
 
@@ -265,7 +271,8 @@ class Parser:
                 RunTimeError(
                     pos_start,
                     pos_end,
-                    f"Module '{file_path_str}' cannot be found.",
+                    "RUN026",
+                    {"file_path": file_path_str},
                 )
             )
 
@@ -304,7 +311,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected 'if'",
+                    "SYN010",
                 )
             )
 
@@ -333,7 +340,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected 'then' or '{' after if condition.",
+                    "SYN011",
                 )
             )
 
@@ -363,7 +370,7 @@ class Parser:
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        "Expected 'then' or '{' after elif condition.",
+                        "SYN012",
                     )
                 )
 
@@ -468,8 +475,7 @@ class Parser:
                     ComparisonError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        "Chained comparisons are not supported. "
-                        "Combine separate comparisons with 'and' or 'or'.",
+                        "CMP001",
                     )
                 )
 
@@ -517,14 +523,14 @@ class Parser:
                 return None, B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected ']' after type in array declaration.",
+                    "SYN013",
                 )
             self.forward()
             if type_tok.value == "List":
                 return None, B_SharpSyntaxError(
                     type_tok.pos_start,
                     type_tok.pos_end,
-                    "Array of List is not supported. Use List for untyped collections.",
+                    "SYN014",
                 )
             type_tok.value = type_tok.value + "[]"
         return type_tok, None
@@ -545,7 +551,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected variable identifier name after 'var' or 'const'.",
+                    "SYN015",
                 )
             )
 
@@ -559,7 +565,7 @@ class Parser:
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        "Expected identifier name after ','.",
+                        "SYN016",
                     )
                 )
             names.append(self.current_token)
@@ -576,7 +582,7 @@ class Parser:
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        "Expected type identifier after ':'.",
+                        "SYN017",
                     )
                 )
 
@@ -585,14 +591,14 @@ class Parser:
                 return res.failure(err)
 
             if TYPE_MAP.get(type_tok.value) is None:
-                return res.failure(
-                    B_SharpSyntaxError(
-                        type_tok.pos_start,
-                        type_tok.pos_end,
-                        f"Unknown data type '{type_tok.value}'. "
-                        f"{_VALID_TYPES_MESSAGE}",
+                    return res.failure(
+                        B_SharpSyntaxError(
+                            type_tok.pos_start,
+                            type_tok.pos_end,
+                            "SYN018",
+                            {"type_name": type_tok.value},
+                        )
                     )
-                )
 
         value_node = None
         if self.current_token.type == TOKEN_EQUAL:
@@ -614,7 +620,7 @@ class Parser:
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        "Multiple initializers in assignment are not supported.",
+                        "SYN019",
                     )
                 )
 
@@ -623,7 +629,7 @@ class Parser:
                 B_SharpSyntaxError(
                     start_tok.pos_start,
                     self.current_token.pos_end,
-                    "Uninitialized 'const' declaration requires a value or type.",
+                    "SYN020",
                 )
             )
 
@@ -650,7 +656,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected '[' for creating a list.",
+                    "SYN021",
                 )
             )
 
@@ -669,11 +675,11 @@ class Parser:
         else:
             list_of_elements.append(res.register(self.expression()))
             if res.error:
-                return res.failure(
+                    return res.failure(
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        f"Expected a valid node inside list. Got unexpected {self.current_token}",
+                        "SYN022",
                     )
                 )
 
@@ -696,7 +702,7 @@ class Parser:
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        f"Expected ',' or ']' for a list definition. Got {self.current_token}",
+                        "SYN023",
                     )
                 )
 
@@ -726,7 +732,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected '{' after 'try'.",
+                    "SYN024",
                 )
             )
 
@@ -738,7 +744,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Empty 'try' block is not allowed — it must contain at least one statement.",
+                    "SYN025",
                 )
             )
 
@@ -746,12 +752,21 @@ class Parser:
         if res.error:
             return res
 
+        if not body_node.statement_nodes:
+            return res.failure(
+                B_SharpSyntaxError(
+                    pos_start,
+                    self.current_token.pos_end,
+                    "SYN025",
+                )
+            )
+
         if self.current_token.type != TOKEN_RCURLY:
             return res.failure(
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected '}' at end of 'try' block.",
+                    "SYN026",
                 )
             )
 
@@ -759,16 +774,117 @@ class Parser:
         res.register_forward()
         self.forward()
 
-        if self.current_token.matches(TOKEN_KEYWORD, "catch"):
-            return res.failure(
-                B_SharpSyntaxError(
-                    self.current_token.pos_start,
-                    self.current_token.pos_end,
-                    "Unimplemented or unfound 'catch' block after 'try'.",
+        catch_nodes = []
+        while True:
+            temp_idx = self.token_index
+            while temp_idx < len(self.tokens) and self.tokens[temp_idx].type in (
+                TOKEN_NEWLINE,
+                TOKEN_SEMICOLON,
+            ):
+                temp_idx += 1
+            if temp_idx >= len(self.tokens) or not self.tokens[temp_idx].matches(
+                TOKEN_KEYWORD, "catch"
+            ):
+                break
+            self._skip_newlines(res)
+            if not self.current_token.matches(TOKEN_KEYWORD, "catch"):
+                break
+            catch_pos_start = self.current_token.pos_start.copy()
+            res.register_forward()
+            self.forward()
+
+            if self.current_token.type != TOKEN_LPAREN:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "SYN027",
+                    )
+                )
+            res.register_forward()
+            self.forward()
+
+            if self.current_token.type not in (TOKEN_IDENTIFIER, TOKEN_KEYWORD):
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "SYN028",
+                    )
+                )
+            exception_tok = self.current_token
+            if ERROR_TYPE_MAP.get(exception_tok.value) is None:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        exception_tok.pos_start,
+                        exception_tok.pos_end,
+                        "SYN029",
+                        {"error_type": exception_tok.value},
+                    )
+                )
+            res.register_forward()
+            self.forward()
+
+            exception_var_tok = None
+            if self.current_token.type == TOKEN_IDENTIFIER:
+                exception_var_tok = self.current_token
+                res.register_forward()
+                self.forward()
+
+            if self.current_token.type != TOKEN_RPAREN:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "SYN030",
+                    )
+                )
+            res.register_forward()
+            self.forward()
+
+            self._skip_newlines(res)
+
+            if self.current_token.type != TOKEN_LCURLY:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "SYN031",
+                    )
+                )
+
+            catch_body = res.register(self.block())
+            if res.error:
+                return res
+
+            catch_pos_end = (
+                catch_body.pos_end.copy()
+                if catch_body.pos_end
+                else catch_pos_start.copy()
+            )
+            catch_nodes.append(
+                CatchNode(
+                    catch_pos_start,
+                    catch_pos_end,
+                    catch_body,
+                    exception=exception_tok,
+                    exception_var=exception_var_tok,
                 )
             )
 
-        return res.success(TryNode(pos_start, rcurly_pos, body_node))
+        if not catch_nodes:
+            return res.failure(
+                B_SharpSyntaxError(
+                    pos_start,
+                    rcurly_pos,
+                    "SYN032",
+                )
+            )
+
+        final_pos_end = catch_nodes[-1].pos_end.copy()
+        return res.success(
+            TryCatchNode(pos_start, final_pos_end, body_node, catch_nodes)
+        )
 
     def statement(self):
         res = ParserResults()
@@ -810,6 +926,8 @@ class Parser:
                 return self.import_module()
             elif self.current_token.value == "try":
                 return self.try_statement()
+            elif self.current_token.value == "struct":
+                return self.struct_def()
 
         # Prefix ++i / --i
         if self.current_token.type in (TOKEN_INC, TOKEN_DEC):
@@ -844,6 +962,15 @@ class Parser:
                 if res.error:
                     return res
                 return res.success(IndexAssignNode(lhs, value_node))
+
+            if isinstance(lhs, PropertyAccessNode):
+                res.register(self.forward())  # consume '='
+                value_node = res.register(self.expression())
+                if res.error:
+                    return res
+                return res.success(
+                    PropertyAssignNode(lhs.node, lhs.property_name_token, value_node)
+                )
 
         self.token_index = saved_index
         self.current_token = saved_token
@@ -901,7 +1028,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    f"Expression or block nesting exceeds the maximum depth of {MAX_PARSE_DEPTH}.",
+                    "SYN033",
                 )
             )
         if not res.error and self.current_token.type != TOKEN_EOF:
@@ -909,7 +1036,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Unexpected token or invalid syntax.",
+                    "SYN034",
                 )
             )
         return res
@@ -929,7 +1056,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected '{'",
+                    "SYN035",
                 )
             )
 
@@ -946,7 +1073,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected '}'",
+                    "SYN036",
                 )
             )
 
@@ -974,7 +1101,7 @@ class Parser:
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        "Expected variable identifier after '++' or '--'.",
+                        "SYN037",
                     )
                 )
 
@@ -987,7 +1114,7 @@ class Parser:
             B_SharpSyntaxError(
                 self.current_token.pos_start,
                 self.current_token.pos_end,
-                "Invalid increment/decrement expression.",
+                "SYN038",
             )
         )
 
@@ -999,7 +1126,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected 'while'",
+                    "SYN039",
                 )
             )
 
@@ -1021,7 +1148,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected '{' or 'then' after while condition.",
+                    "SYN040",
                 )
             )
 
@@ -1038,7 +1165,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected 'do'",
+                    "SYN041",
                 )
             )
 
@@ -1051,7 +1178,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected '{' after 'do' statement.",
+                    "SYN042",
                 )
             )
 
@@ -1064,7 +1191,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected 'while' after 'do' block.",
+                    "SYN043",
                 )
             )
         res.register_forward()
@@ -1075,7 +1202,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected '(' after 'while' in do/while.",
+                    "SYN044",
                 )
             )
         res.register_forward()
@@ -1086,13 +1213,13 @@ class Parser:
             return res
         self._skip_newlines(res)
         if self.current_token.type != TOKEN_RPAREN:
-            return res.failure(
-                B_SharpSyntaxError(
-                    self.current_token.pos_start,
-                    self.current_token.pos_end,
-                    "Expected ')' after do/while condition.",
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "SYN045",
+                    )
                 )
-            )
         rparen_end = self.current_token.pos_end.copy()
         res.register_forward()
         self.forward()
@@ -1107,7 +1234,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected 'for'",
+                    "SYN046",
                 )
             )
 
@@ -1119,7 +1246,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected '(' after 'for'.",
+                    "SYN047",
                 )
             )
 
@@ -1135,7 +1262,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected ';' after for loop initializer.",
+                    "SYN048",
                 )
             )
 
@@ -1151,7 +1278,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected ';' after for loop condition.",
+                    "SYN049",
                 )
             )
 
@@ -1167,7 +1294,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected ')' after for loop header.",
+                    "SYN050",
                 )
             )
 
@@ -1185,7 +1312,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected '{' or 'then' after for loop expression.",
+                    "SYN051",
                 )
             )
 
@@ -1219,7 +1346,7 @@ class Parser:
                         B_SharpSyntaxError(
                             self.current_token.pos_start,
                             self.current_token.pos_end,
-                            "Expected property or method name",
+                            "SYN052",
                         )
                     )
                 property_tok = self.current_token
@@ -1282,7 +1409,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected closing brackets ']'",
+                    "SYN053",
                 )
             )
 
@@ -1330,7 +1457,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected ')' or ','",
+                    "SYN054",
                 )
             )
 
@@ -1376,7 +1503,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected ',' or ')'",
+                    "SYN055",
                 )
             )
 
@@ -1395,7 +1522,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected 'fn' or 'function'",
+                    "SYN056",
                 )
             )
 
@@ -1408,7 +1535,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Unallowed calling of a function by a keyword.",
+                    "SYN057",
                 )
             )
 
@@ -1417,8 +1544,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    f"Expected function identifier after function name.\n"
-                    "Anonymous functions are not allowed.",
+                    "SYN058",
                 )
             )
 
@@ -1431,7 +1557,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected '(' after function name.",
+                    "SYN059",
                 )
             )
 
@@ -1451,7 +1577,7 @@ class Parser:
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        "Expected parameter name identifier.",
+                        "SYN060",
                     )
                 )
 
@@ -1475,8 +1601,8 @@ class Parser:
                             B_SharpSyntaxError(
                                 param_type.pos_start,
                                 param_type.pos_end,
-                                f"Unknown data type '{param_type.value}'. "
-                                + _VALID_TYPES_MESSAGE,
+                                "SYN018",
+                                {"type_name": param_type.value},
                             )
                         )
                 else:
@@ -1484,7 +1610,7 @@ class Parser:
                         B_SharpSyntaxError(
                             self.current_token.pos_start,
                             self.current_token.pos_end,
-                            "Expected type identifier after ':'.",
+                            "SYN061",
                         )
                     )
 
@@ -1495,14 +1621,16 @@ class Parser:
                         ShadowingError(
                             param_name.pos_start,
                             param_name.pos_end,
-                            f"Parameter name '{param_name.value}' shadows the function name '{var_name_tok.value}'.",
+                            param_name.value,
+                            var_name_tok.value,
                         )
                     )
                 return res.failure(
                     B_SharpSyntaxError(
                         param_name.pos_start,
                         param_name.pos_end,
-                        f"Duplicate parameter name '{param_name.value}' in function '{var_name_tok.value}'.",
+                        "SYN062",
+                        {"param_name": param_name.value, "func_name": var_name_tok.value},
                     )
                 )
             seen_param_names.add(param_name.value)
@@ -1517,7 +1645,7 @@ class Parser:
                         B_SharpSyntaxError(
                             self.current_token.pos_start,
                             self.current_token.pos_end,
-                            "Expected parameter name identifier after ','.",
+                            "SYN063",
                         )
                     )
 
@@ -1541,8 +1669,8 @@ class Parser:
                                 B_SharpSyntaxError(
                                     param_type.pos_start,
                                     param_type.pos_end,
-                                    f"Unknown data type '{param_type.value}'. "
-                                    + _VALID_TYPES_MESSAGE,
+                                    "SYN018",
+                                    {"type_name": param_type.value},
                                 )
                             )
                     else:
@@ -1550,7 +1678,7 @@ class Parser:
                             B_SharpSyntaxError(
                                 self.current_token.pos_start,
                                 self.current_token.pos_end,
-                                "Expected type identifier after ':'.",
+                                "SYN061",
                             )
                         )
 
@@ -1561,14 +1689,16 @@ class Parser:
                             ShadowingError(
                                 param_name.pos_start,
                                 param_name.pos_end,
-                                f"Parameter name '{param_name.value}' shadows the function name '{var_name_tok.value}'.",
+                                param_name.value,
+                                var_name_tok.value,
                             )
                         )
                     return res.failure(
                         B_SharpSyntaxError(
                             param_name.pos_start,
                             param_name.pos_end,
-                            f"Duplicate parameter name '{param_name.value}' in function '{var_name_tok.value}'.",
+                            "SYN062",
+                            {"param_name": param_name.value, "func_name": var_name_tok.value},
                         )
                     )
                 seen_param_names.add(param_name.value)
@@ -1580,7 +1710,7 @@ class Parser:
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        "Expected ',' or ')' in parameter list.",
+                        "SYN063",
                     )
                 )
 
@@ -1604,8 +1734,8 @@ class Parser:
                         B_SharpSyntaxError(
                             return_type_tok.pos_start,
                             return_type_tok.pos_end,
-                            f"Unknown return type '{return_type_tok.value}'. "
-                            + _VALID_TYPES_MESSAGE,
+                            "SYN064",
+                            {"return_type": return_type_tok.value},
                         )
                     )
             else:
@@ -1613,7 +1743,7 @@ class Parser:
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
-                        "Expected return type identifier after '->'.",
+                        "SYN065",
                     )
                 )
 
@@ -1622,7 +1752,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected '{' to start function body block.",
+                    "SYN066",
                 )
             )
 
@@ -1642,7 +1772,7 @@ class Parser:
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
                     self.current_token.pos_end,
-                    "Expected 'return'",
+                    "SYN067",
                 )
             )
 
@@ -1666,1358 +1796,86 @@ class Parser:
 
         return res.success(ReturnNode(expr, start_pos, expr.pos_end))
 
+    def struct_def(self):
+        res = ParserResults()
 
-class RunTimeResult:
-    def __init__(self):
-        self.error = None
-        self.value = None
-        self.func_return_value = None
-        self.should_break = False
-        self.should_continue = False
-
-    def register(self, res):
-        if isinstance(res, RunTimeResult):
-            if res.error:
-                self.error = res.error
-            if res.func_return_value is not None:
-                self.func_return_value = res.func_return_value
-            if res.should_break:
-                self.should_break = True
-            if res.should_continue:
-                self.should_continue = True
-            return res.value
-        return res
-
-    def success(self, value):
-        self.value = value
-        return self
-
-    def success_return(self, value):
-        self.func_return_value = value
-        return self
-
-    def success_break(self, value):
-        self.value = value
-        self.should_break = True
-        return self
-
-    def success_continue(self, value):
-        self.value = value
-        self.should_continue = True
-        return self
-
-    def failure(self, error):
-        self.error = error
-        return self
-
-
-class Interpreter:
-    def __init__(self, max_call_depth=500):
-        self.max_call_depth = max_call_depth
-        self.current_call_depth = 0
-        self.loaded_modules = {}
-        self.loading_modules = set()
-
-    def _inside_function(self, context):
-        current = context
-        while current is not None:
-            if getattr(current, "in_function", False):
-                return True
-            current = current.parent
-        return False
-
-    def _inside_loop(self, context):
-        cur = context
-        while cur is not None:
-            if getattr(cur, "in_loop", False):
-                return True
-            if getattr(cur, "in_function", False):
-                return False
-            cur = cur.parent
-
-        return False
-
-    @_with_recursion_headroom
-    def visit(self, node, context):
-        method_name = f"visit_{type(node).__name__}"
-        method = getattr(self, method_name, self.no_visit_method)
-        return method(node, context)
-
-    def no_visit_method(self, node, context):
-        return RunTimeResult().failure(
-            RunTimeError(
-                getattr(node, "pos_start", None),
-                getattr(node, "pos_end", None),
-                f"No visitor implemented for node '{type(node).__name__}'.",
-            )
-        )
-
-    ################################################################
-    # Visitors
-    ################################################################
-
-    def visit_NumberNode(self, node, context):
-        return RunTimeResult().success(
-            Number(node.token.value)
-            .set_context(context)
-            .set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_BooleanNode(self, node, context):
-        value = node.token.value == "true"
-        return RunTimeResult().success(
-            Boolean(value).set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_NoneNode(self, node, context):
-        return RunTimeResult().success(
-            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_ListNode(self, node, context):
-        res = RunTimeResult()
-        list_of_elements = []
-
-        for element_node in node.list_of_expressions:
-            list_of_elements.append(res.register(self.visit(element_node, context)))
-
-            if res.error:
-                return res
-
-        return res.success(
-            List(list_of_elements)
-            .set_context(context)
-            .set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_BinaryOpNode(self, node, context):
-        res = RunTimeResult()
-        left = res.register(self.visit(node.left_node, context))
-        if res.error:
-            return res
-
-        # 'and'/'or' short-circuit: the right operand is only evaluated when
-        # the result can still change.
-        if node.op_token.type == TOKEN_KEYWORD and node.op_token.value in (
-            "and",
-            "or",
-        ):
-            return self.visit_short_circuit(node, left, res, context)
-
-        right = res.register(self.visit(node.right_node, context))
-        if res.error:
-            return res
-
-        if node.op_token.type == TOKEN_PLUS:
-            result, error = left.addition(right)
-        elif node.op_token.type == TOKEN_MINUS:
-            result, error = left.subtraction(right)
-        elif node.op_token.type == TOKEN_MUL:
-            result, error = left.multiplication(right)
-            if error and hasattr(right, "_reversed_multiplication"):
-                result, error = right._reversed_multiplication(left)
-        elif node.op_token.type == TOKEN_DIV:
-            result, error = left.division(right)
-        elif node.op_token.type == TOKEN_IDIV:
-            result, error = left.integer_division(right)
-        elif node.op_token.type == TOKEN_POWER:
-            result, error = left.power(right)
-        elif node.op_token.type == TOKEN_EE:
-            result, error = left.is_equal(right)
-        elif node.op_token.type == TOKEN_NOT_E:
-            result, error = left.not_equal(right)
-        elif node.op_token.type == TOKEN_LT:
-            result, error = left.less_than(right)
-        elif node.op_token.type == TOKEN_GT:
-            result, error = left.greater_than(right)
-        elif node.op_token.type == TOKEN_LTE:
-            result, error = left.less_than_equal(right)
-        elif node.op_token.type == TOKEN_GTE:
-            result, error = left.greater_than_equal(right)
-        elif node.op_token.type == TOKEN_MODULO:
-            result, error = left.modulo_division(right)
-        else:
-            result, error = None, RunTimeError(
-                node.op_token.pos_start,
-                node.op_token.pos_end,
-                f"Unknown binary operator '{node.op_token.value or node.op_token.type}'.",
-            )
-
-        if error:
-            return res.failure(error)
-        else:
-            return res.success(result.set_pos(node.pos_start, node.pos_end))
-
-    def visit_short_circuit(self, node, left, res, context):
-        is_and = node.op_token.value == "and"
-
-        if isinstance(left, Boolean):
-            if is_and:
-                if left.value:
-                    right = res.register(self.visit(node.right_node, context))
-                    if res.error:
-                        return res
-                    result, error = left.and_(right)
-                else:
-                    result, error = Boolean(False), None
-            else:
-                if left.value:
-                    result, error = Boolean(True), None
-                else:
-                    right = res.register(self.visit(node.right_node, context))
-                    if res.error:
-                        return res
-                    result, error = left.or_(right)
-        else:
-            result, error = left.and_(left) if is_and else left.or_(left)
-
-        if error:
-            return res.failure(error)
-        return res.success(result.set_pos(node.pos_start, node.pos_end))
-
-    def visit_UnaryOpNode(self, node, context):
-        res = RunTimeResult()
-        operand = res.register(self.visit(node.node, context))
-        if res.error:
-            return res
-
-        if node.op_token.type == TOKEN_MINUS:
-            if isinstance(operand, Inf):
-                # Negating infinity flips its sign instead of falling
-                # through the multiplication path.
-                result, error = operand.negated(), None
-            elif isinstance(operand, (Number, List, Array)):
-                result, error = operand.multiplication(Number(-1))
-            else:
-                result, error = None, RunTimeError(
-                    node.op_token.pos_start,
-                    node.pos_end,
-                    f"Unary '-' cannot negate {type(operand).__name__}. "
-                    "Only Number, list/array, and inf values can be negated.",
-                )
-        elif node.op_token.type == TOKEN_PLUS:
-            result, error = operand, None
-        elif node.op_token.type == TOKEN_KEYWORD and node.op_token.value == "not":
-            result, error = operand.not_()
-        else:
-            result, error = None, RunTimeError(
-                node.op_token.pos_start,
-                node.op_token.pos_end,
-                f"Unknown unary operator '{node.op_token.value}'.",
-            )
-
-        if error:
-            return res.failure(error)
-        return res.success(result.set_pos(node.pos_start, node.pos_end))
-
-    def visit_VariableAccessNode(self, node, context):
-        result = RunTimeResult()
-        var_name = node.name.value
-        value, error = context.variables.set_pos(node.pos_start, node.pos_end).get(
-            var_name
-        )
-
-        if error:
-            return result.failure(error)
-        return result.success(value)
-
-    def visit_VariableAssignNode(self, node, context):
-        res = RunTimeResult()
-        var_name = node.name.value
-
-        is_implicit = node.value is None
-
-        data_type_class = None
-        if node.data_type:
-            data_type_class = TYPE_MAP.get(node.data_type.value)
-
-        if is_implicit:
-            # Fallback per Docs/1_Common/2_data_types.md:136
-            value = default_for_type(
-                data_type_class, node.pos_start, node.pos_end, context
-            )
-        else:
-            value = res.register(self.visit(node.value, context))
-            if res.error:
-                return res
-
-        if (
-            data_type_class
-            and issubclass(data_type_class, Array)
-            and isinstance(value, List)
-        ):
-            array_class = TYPE_MAP.get(node.data_type.value)
-            if array_class:
-                value = array_class(value.list_of_elements)
-                value.set_context(context).set_pos(node.pos_start, node.pos_end)
-                err = value._validate_all()
-                if err:
-                    return res.failure(err)
-
-        # Fix 3: alias bug — List/Array assignment must copy (deep) to avoid mutating original
-        if isinstance(value, (List, Array)):
-            value = value.copy()
-
-        val, error = context.variables.set_pos(node.pos_start, node.pos_end).define(
-            name=var_name,
-            data_type=data_type_class,
-            value=value,
-            is_const=node.is_const,
-        )
-
-        if error:
-            return res.failure(error)
-        return res.success(val)
-
-    def visit_MultiVariableAssignNode(self, node, context):
-        res = RunTimeResult()
-
-        is_implicit = node.value is None
-
-        data_type_class = None
-        if node.data_type:
-            data_type_class = TYPE_MAP.get(node.data_type.value)
-
-        if is_implicit:
-            # Fallback per Docs/1_Common/2_data_types.md:136
-            value = default_for_type(
-                data_type_class, node.names[0].pos_start, node.pos_end, context
-            )
-        else:
-            value = res.register(self.visit(node.value, context))
-            if res.error:
-                return res
-
-        if (
-            data_type_class
-            and issubclass(data_type_class, Array)
-            and isinstance(value, List)
-        ):
-            array_class = TYPE_MAP.get(node.data_type.value)
-            if array_class:
-                value = array_class(value.list_of_elements)
-                value.set_context(context).set_pos(node.pos_start, node.pos_end)
-                err = value._validate_all()
-                if err:
-                    return res.failure(err)
-
-        last_val = value
-        for name_tok in node.names:
-            var_name = name_tok.value
-            assigned_value = value.copy() if isinstance(value, (List, Array)) else value
-            val, error = context.variables.set_pos(
-                name_tok.pos_start, name_tok.pos_end
-            ).define(
-                name=var_name,
-                data_type=data_type_class,
-                value=assigned_value,
-                is_const=node.is_const,
-            )
-            if error:
-                return res.failure(error)
-            last_val = val
-
-        return res.success(last_val)
-
-    def visit_VariableReassignNode(self, node, context):
-        res = RunTimeResult()
-        var_name = node.name.value
-
-        value = res.register(self.visit(node.value, context))
-        if res.error:
-            return res
-
-        declared_type, err = context.variables.get_type(
-            var_name, node.pos_start, node.pos_end
-        )
-        if err:
-            return res.failure(err)
-
-        if (
-            declared_type
-            and issubclass(declared_type, Array)
-            and isinstance(value, List)
-        ):
-            for key, arr_class in TYPE_MAP.items():
-                if arr_class is declared_type:
-                    value = arr_class(value.list_of_elements)
-                    value.set_context(context).set_pos(node.pos_start, node.pos_end)
-                    val_err = value._validate_all()
-                    if val_err:
-                        return res.failure(val_err)
-                    break
-
-        # Fix 3: reassignment alias — copy List/Array to keep variable independence
-        if isinstance(value, (List, Array)):
-            value = value.copy()
-
-        val, error = context.variables.set_pos(node.pos_start, node.pos_end).assign(
-            name=var_name, value=value
-        )
-
-        if error:
-            return res.failure(error)
-        return res.success(val)
-
-    def visit_IfNode(self, node, context):
-        res = RunTimeResult()
-
-        for condition, expression in node.cases:
-            condition_value = res.register(self.visit(condition, context))
-            if res.error:
-                return res
-            if res.should_break or res.should_continue:
-                return res
-            if res.func_return_value is not None:
-                return res
-
-            if condition_value.true_():
-                # Leaking: `var` inside `if` must be visible outside (no new Context)
-                expression_value = res.register(self.visit(expression, context))
-                if res.error:
-                    return res
-                if res.should_break or res.should_continue:
-                    return res
-                if res.func_return_value is not None:
-                    return res
-                return res.success(expression_value)
-
-        if node.else_case:
-            else_value = res.register(self.visit(node.else_case, context))
-            if res.error:
-                return res
-            if res.should_break or res.should_continue:
-                return res
-            if res.func_return_value is not None:
-                return res
-            return res.success(else_value)
-
-        return res.success(
-            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_StatementsNode(self, node, context):
-        res = RunTimeResult()
-        last_value = Empty().set_context(context)
-
-        for stmt in node.statement_nodes:
-            value = res.register(self.visit(stmt, context))
-            if res.error:
-                return res
-            if res.func_return_value is not None:
-                return res
-            if res.should_break or res.should_continue:
-                return res
-            last_value = value
-
-        return res.success(last_value)
-
-    def visit_StringNode(self, node, context):
-        return RunTimeResult().success(
-            String(node.token.value)
-            .set_context(context)
-            .set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_IncrementNode(self, node, context):
-        res = RunTimeResult()
-
-        var_name = node.var_name_tok.value
-        val, error = context.variables.set_pos(node.pos_start, node.pos_end).get(
-            var_name
-        )
-
-        if error:
-            return res.failure(error)
-
-        if not isinstance(val, Number):
+        if not self.current_token.matches(TOKEN_KEYWORD, "struct"):
             return res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    "Increment/decrement operations are only supported on Number types.",
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN070",
                 )
             )
 
-        old_num = val.value
-        new_num = old_num + 1 if node.op_tok.type == TOKEN_INC else old_num - 1
-        new_val = (
-            Number(new_num).set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
+        res.register_forward()
+        self.forward()
 
-        _, assign_err = context.variables.set_pos(node.pos_start, node.pos_end).assign(
-            var_name, new_val
-        )
-        if assign_err:
-            return res.failure(assign_err)
-
-        return res.success(
-            Number(old_num if node.is_postfix else new_num)
-            .set_context(context)
-            .set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_WhileNode(self, node, context):
-        res = RunTimeResult()
-
-        while True:
-            cond_val = res.register(self.visit(node.condition_node, context))
-            if res.error:
-                return res
-
-            if not cond_val.true_():
-                break
-
-            body_context = BodyScopeContext(
-                context, context, in_function=context.in_function
+        if self.current_token.type == TOKEN_KEYWORD:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN057",
+                )
             )
-            val = res.register(self.visit(node.body_node, body_context))
-            if res.error:
-                return res
-            if res.func_return_value is not None:
-                return res
 
-            if res.should_break:
-                res.should_break = False
-                break
-
-            if res.should_continue:
-                res.should_continue = False
-                continue
-
-        return res.success(
-            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_DoNode(self, node, context):
-        res = RunTimeResult()
-        while True:
-            body_ctx = BodyScopeContext(
-                context, context, in_function=context.in_function
+        if self.current_token.type != TOKEN_IDENTIFIER:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN071",
+                )
             )
-            val = res.register(self.visit(node.body_node, body_ctx))
-            if res.error:
-                return res
-            if res.func_return_value is not None:
-                return res
-            if res.should_break:
-                res.should_break = False
-                break
-            if res.should_continue:
-                res.should_continue = False
-            cond_val = res.register(self.visit(node.condition_node, context))
-            if res.error:
-                return res
-            if res.should_break or res.should_continue:
-                return res
-            if res.func_return_value is not None:
-                return res
-            if not cond_val.true_():
-                break
-        return res.success(
-            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
 
-    def visit_ForNode(self, node, context):
-        res = RunTimeResult()
+        name_tok = self.current_token
+        res.register_forward()
+        self.forward()
 
-        loop_context = Context(
-            "<for>",
-            context,
-            node.pos_start,
-            in_function=context.in_function,
-            in_loop=True,
-        )
-        res.register(self.visit(node.init_node, loop_context))
-        if res.error:
-            return res
-
-        while True:
-            cond_val = res.register(self.visit(node.condition_node, loop_context))
-            if res.error:
-                return res
-
-            if not cond_val.true_():
-                break
-
-            body_context = BodyScopeContext(
-                loop_context, context, in_function=loop_context.in_function
+        if self.current_token.type != TOKEN_LCURLY:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN072",
+                )
             )
-            val = res.register(self.visit(node.body_node, body_context))
-            if res.error:
-                return res
-            if res.func_return_value is not None:
-                return res
 
-            if res.should_break:
-                res.should_break = False
-                break
+        res.register_forward()
+        self.forward()
 
-            if res.should_continue:
-                res.should_continue = False
+        self._skip_newlines(res)
 
-            res.register(self.visit(node.update_node, loop_context))
-            if res.error:
-                return res
-
-        return res.success(
-            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_FunctionDefNode(self, node, context):
-        res = RunTimeResult()
-
-        func_name = node.var_name_tok.value
-        body_node = node.body_node
-        arg_nodes = node.arg_nodes
-        return_type_tok = node.return_type_tok
-
-        func_value = Function(
-            name=func_name,
-            body_node=body_node,
-            arg_nodes=arg_nodes,
-            return_type_tok=return_type_tok,
-            parent_context=context,
-        ).set_pos(node.pos_start, node.pos_end)
-
-        # F1: if promised return type, body must guarantee a `return <value>` on all paths
-        if func_value.return_type is not None:
-
-            def _always_returns(n):
-                if isinstance(n, ReturnNode):
-                    return n.node_to_return is not None
-                if isinstance(n, IfNode):
-                    # all branches must always return and else must exist
-                    if n.else_case is None:
-                        return False
-                    for _, expr in n.cases:
-                        if not _always_returns(expr):
-                            return False
-                    if not _always_returns(n.else_case):
-                        return False
-                    return True
-                if isinstance(n, StatementsNode):
-                    for s in n.statement_nodes:
-                        if _always_returns(s):
-                            return True
-                    return False
-                if isinstance(n, WhileNode):
-                    return False
-                if isinstance(n, ForNode):
-                    return False
-                return False
-
-            if not _always_returns(body_node):
+        member_nodes = []
+        while self.current_token.type != TOKEN_RCURLY:
+            if self.current_token.type == TOKEN_EOF:
                 return res.failure(
                     B_SharpSyntaxError(
-                        node.var_name_tok.pos_start,
-                        node.var_name_tok.pos_end,
-                        f"Function '{func_name}' promises return type '{func_value.return_type.__name__}' but not all code paths return a value. Ensure every branch ends with 'return <value>'.",
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "SYN036",
                     )
                 )
 
-        # Emit warnings for unreachable code after return (for any function)
-        def _always_returns_for_unreachable(n):
-            if isinstance(n, ReturnNode):
-                return n.node_to_return is not None or True  # any return dominates
-            if isinstance(n, IfNode):
-                if n.else_case is None:
-                    return False
-                for _, expr in n.cases:
-                    if not _always_returns_for_unreachable(expr):
-                        return False
-                return _always_returns_for_unreachable(n.else_case)
-            if isinstance(n, StatementsNode):
-                for s in n.statement_nodes:
-                    if _always_returns_for_unreachable(s):
-                        return True
-                return False
-            return False
-
-        def _emit_unreachable(stmts):
-            if isinstance(stmts, StatementsNode):
-                seen_return = False
-                for s in stmts.statement_nodes:
-                    if seen_return:
-                        try:
-                            w = UnreachableCodeWarning(
-                                s.pos_start,
-                                s.pos_end,
-                                f"Unreachable code after 'return' in function '{func_name}' – this statement will be ignored.",
-                            )
-                            print(w, end="", file=sys.stderr)
-                        except Exception:
-                            pass
-                    # check if this statement always returns
-                    if _always_returns_for_unreachable(s):
-                        seen_return = True
-                    # recurse into nested blocks for internal unreachable
-                    if isinstance(s, IfNode):
-                        for _, expr in s.cases:
-                            _emit_unreachable(expr)
-                        if s.else_case:
-                            _emit_unreachable(s.else_case)
-                    elif isinstance(s, WhileNode):
-                        _emit_unreachable(s.body_node)
-                    elif isinstance(s, ForNode):
-                        _emit_unreachable(s.body_node)
-                    elif isinstance(s, StatementsNode):
-                        _emit_unreachable(s)
-
-        try:
-            _emit_unreachable(body_node)
-        except Exception:
-            pass
-
-        val, error = context.variables.set_pos(node.pos_start, node.pos_end).define(
-            name=func_name,
-            data_type=Function,
-            value=func_value,
-            is_const=False,
-        )
-
-        if error:
-            return res.failure(error)
-
-        return res.success(func_value)
-
-    def visit_CallNode(self, node, context):
-        res = RunTimeResult()
-
-        value_to_call = res.register(self.visit(node.node_to_call, context))
-        if res.error:
-            return res
-
-        if not isinstance(value_to_call, (Function, BuiltinFunction)):
-            return res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    f"'{node.node_to_call}' is not a function.",
-                )
-            )
-
-        args = []
-        for arg_node in node.arg_nodes:
-            arg_val = res.register(self.visit(arg_node, context))
+            stmt = res.register(self.statement())
             if res.error:
                 return res
-            args.append(arg_val)
-
-        if isinstance(value_to_call, BuiltinFunction):
-            value_to_call.set_context(context)
-            value_to_call.pos_start = node.pos_start
-            value_to_call.pos_end = node.pos_end
-            result = res.register(
-                value_to_call.execute(
-                    args, self, call_pos_start=node.pos_start, call_pos_end=node.pos_end
-                )
-            )
-            if res.error:
-                return res
-            return res.success(result)
-
-        if self.current_call_depth >= self.max_call_depth:
-            return res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    "Maximum call depth exceeded (recursion too deep).",
-                )
-            )
-
-        self.current_call_depth += 1
-        try:
-            return_value = res.register(
-                value_to_call.execute(
-                    args, self, call_pos_start=node.pos_start, call_pos_end=node.pos_end
-                )
-            )
-        finally:
-            self.current_call_depth -= 1
-
-        if res.error:
-            return res
-
-        return res.success(return_value)
-
-    def visit_ReturnNode(self, node, context):
-        res = RunTimeResult()
-
-        if not self._inside_function(context):
-            return res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    "Cannot use 'return' outside of a function.",
-                )
-            )
-
-        if node.node_to_return:
-            return_val = res.register(self.visit(node.node_to_return, context))
-            if res.error:
-                return res
-        else:
-            return_val = (
-                Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
-            )
-
-        return res.success_return(return_val)
-
-    def visit_PropertyAccessNode(self, node, context):
-        res = RunTimeResult()
-        obj = res.register(self.visit(node.node, context))
-        if res.error:
-            return res
-
-        _property = node.property_name_token.value
-        pos = node.pos_start, node.pos_end
-
-        # Unified size API: both .length and .size work on every
-        # sized builtin type (String, List, Array).
-        sized_types = (List, Array, String)
-        if isinstance(obj, sized_types) and _property in ("length", "size"):
-            size = (
-                len(obj.value) if isinstance(obj, String) else len(obj.list_of_elements)
-            )
-            return res.success(Number(size).set_context(context).set_pos(*pos))
-
-        # Typed arrays must be checked before base Array/List
-        if isinstance(obj, NumberArray):
-            type_name = "Number[]"
-        elif isinstance(obj, StringArray):
-            type_name = "String[]"
-        elif isinstance(obj, BooleanArray):
-            type_name = "Bool[]"
-        elif isinstance(obj, EmptyArray):
-            type_name = "Empty[]"
-        elif isinstance(obj, Array):
-            type_name = "Array"
-        elif isinstance(obj, List):
-            type_name = "List"
-        elif isinstance(obj, String):
-            type_name = "String"
-        elif isinstance(obj, Number):
-            type_name = "Number"
-        elif isinstance(obj, Boolean):
-            type_name = "Bool"
-        elif isinstance(obj, Empty):
-            type_name = "Empty"
-        elif isinstance(obj, NaN):
-            type_name = "NaN"
-        elif isinstance(obj, Inf):
-            type_name = "Inf"
-        elif isinstance(obj, (Function, BuiltinFunction)):
-            type_name = "Function"
-        else:
-            type_name = type(obj).__name__
-
-        if _property == "type":
-            return res.success(String(type_name).set_context(context).set_pos(*pos))
-
-        expected = "'length' or 'size'" if isinstance(obj, sized_types) else "'type'"
-        return res.failure(
-            RunTimeError(
-                node.pos_start,
-                node.pos_end,
-                f"Unexpected property '{_property}' for {obj.__class__.__name__}. "
-                f"Supported properties here: {expected}.",
-            )
-        )
-
-    def visit_IndexAccessNode(self, node, context):
-        res = RunTimeResult()
-        obj = res.register(self.visit(node.node, context))
-        if res.error:
-            return res
-
-        index = res.register(self.visit(node.index_node, context))
-        if res.error:
-            return res
-
-        if isinstance(obj, (List, Array)):
-            i, err = self._require_int(index, node)
-            if err:
-                return res.failure(err)
-
-            if i < 0:
-                i += len(obj.list_of_elements)
-            if i < 0 or i >= len(obj.list_of_elements):
+            # Only var/const allowed inside struct (C-style) – includes MultiVariableAssignNode for `var a, b: Type`
+            if not isinstance(stmt, (VariableAssignNode, MultiVariableAssignNode)):
                 return res.failure(
-                    RunTimeError(
-                        node.pos_start, node.pos_end, "Index is out of bounds."
+                    B_SharpSyntaxError(
+                        stmt.pos_start,
+                        stmt.pos_end,
+                        "SYN073",
                     )
                 )
+            member_nodes.append(stmt)
 
-            element = obj.list_of_elements[i]
-            return res.success(
-                element.set_context(context).set_pos(node.pos_start, node.pos_end)
-            )
+            self._skip_newlines(res)
 
-        if isinstance(obj, String):
-            i, err = self._require_int(index, node)
-            if err:
-                return res.failure(err)
+        pos_end = self.current_token.pos_end
+        res.register_forward()
+        self.forward()
 
-            if i < 0:
-                i += len(obj.value)
-            if i < 0 or i >= len(obj.value):
-                return res.failure(
-                    RunTimeError(
-                        node.pos_start, node.pos_end, "Index is out of bounds."
-                    )
-                )
-            return res.success(
-                String(obj.value[i])
-                .set_context(context)
-                .set_pos(node.pos_start, node.pos_end)
-            )
-
-        return res.failure(
-            RunTimeError(node.pos_start, node.pos_end, "Given type is not indexable.")
-        )
-
-    def visit_IndexAssignNode(self, node, context):
-        res = RunTimeResult()
-        # Resolve the target container and index
-        # target is an IndexAccessNode (possibly nested)
-        target = node.target
-
-        # We need to get the object that holds the index we assign to.
-        # For `a[0][1] = v`, target is IndexAccessNode( IndexAccessNode(a,0), 1 )
-        # So we visit target.node to get the inner container, then assign at target.index_node
-        # For simplicity, evaluate the container chain fully:
-        # Use recursion: peel off outermost index, evaluate the inner container via visit
-        container_node = target.node
-        index_node = target.index_node
-
-        container = res.register(self.visit(container_node, context))
-        if res.error:
-            return res
-        index_val = res.register(self.visit(index_node, context))
-        if res.error:
-            return res
-        value = res.register(self.visit(node.value_node, context))
-        if res.error:
-            return res
-
-        if isinstance(container, (List, Array)):
-            i, err = self._require_int(index_val, node)
-            if err:
-                return res.failure(err)
-            # assign_at handles negative wrap, dynamic growth, and const check
-            _, err = container.assign_at(i, value)
-            if err:
-                return res.failure(err)
-            return res.success(
-                value.set_context(context).set_pos(node.pos_start, node.pos_end)
-            )
-
-        if isinstance(container, String):
-            return res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    "Cannot assign to string index (strings are immutable).",
-                )
-            )
-
-        return res.failure(
-            RunTimeError(
-                node.pos_start, node.pos_end, "Target of assignment is not indexable."
-            )
-        )
-
-    def _resolve_slice_bounds(self, node, context, res, length):
-        """Evaluates optional slice endpoints.
-
-        Negative values wrap Python-style; out-of-range values clamp into
-        [0, length]. Returns (start, end) or (None, None) after registering
-        a failure on `res`.
-        """
-        start = 0
-        if node.start_node is not None:
-            start_val = res.register(self.visit(node.start_node, context))
-            if res.error:
-                return None, None
-            start, err = self._require_int(start_val, node, "Slice start")
-            if err:
-                res.failure(err)
-                return None, None
-        else:
-            start = 0
-
-        end = length
-        if node.end_node is not None:
-            end_val = res.register(self.visit(node.end_node, context))
-            if res.error:
-                return None, None
-            end, err = self._require_int(end_val, node, "Slice end")
-            if err:
-                res.failure(err)
-                return None, None
-
-        if start < 0:
-            start += length
-        if end < 0:
-            end += length
-        start = max(0, min(start, length))
-        end = max(0, min(end, length))
-        if start > end:
-            start = end
-        return start, end
-
-    def visit_SliceNode(self, node, context):
-        res = RunTimeResult()
-        obj = res.register(self.visit(node.node, context))
-        if res.error:
-            return res
-
-        if isinstance(obj, (List, Array)):
-            length = len(obj.list_of_elements)
-            start, end = self._resolve_slice_bounds(node, context, res, length)
-            if res.error:
-                return res
-
-            sliced = obj.list_of_elements[start:end]
-            # Deep copy nested List/Array elements for full isolation
-            deep_sliced = []
-            for el in sliced:
-                if isinstance(el, (List, Array)):
-                    deep_sliced.append(el.copy())
-                else:
-                    deep_sliced.append(el)
-            if isinstance(obj, Array):
-                result = obj._new_array(deep_sliced)
-            else:
-                result = List(deep_sliced)
-            return res.success(
-                result.set_context(context).set_pos(node.pos_start, node.pos_end)
-            )
-
-        if isinstance(obj, String):
-            length = len(obj.value)
-            start, end = self._resolve_slice_bounds(node, context, res, length)
-            if res.error:
-                return res
-
-            return res.success(
-                String(obj.value[start:end])
-                .set_context(context)
-                .set_pos(node.pos_start, node.pos_end)
-            )
-
-        return res.failure(
-            RunTimeError(node.pos_start, node.pos_end, "Cannot slice this type.")
-        )
-
-    def _load_module(self, node, res, file_path):
-        """Lexes, parses and executes a module exactly once.
-
-        Returns the module's root Context (registered in loaded_modules)
-        or None after registering a failure on `res`.
-        """
-        if file_path in self.loaded_modules:
-            return self.loaded_modules[file_path]
-
-        if not os.path.exists(file_path):
-            res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    f"Could not import '{file_path}': File not found.",
-                )
-            )
-            return None
-
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                script = f.read()
-        except Exception as e:
-            res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    f"Failed to read module '{file_path}': {str(e)}",
-                )
-            )
-            return None
-
-        from B_Sharp.lexer import Lexer
-
-        lexer = Lexer(file_path, script)
-        tokens, lexer_error = lexer.tokenize()
-        if lexer_error:
-            res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    f"Failed to tokenize module '{file_path}': {lexer_error}",
-                )
-            )
-            return None
-
-        module_parser = Parser(tokens)
-        try:
-            ast = module_parser.parser()
-        except ParseDepthExceeded:
-            ast = ParserResults().failure(
-                B_SharpSyntaxError(
-                    tokens[-1].pos_start,
-                    tokens[-1].pos_end,
-                    f"Module '{file_path}' exceeds the maximum nesting depth.",
-                )
-            )
-        if ast.error:
-            res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    f"Failed to parse module '{file_path}': {ast.error}",
-                )
-            )
-            return None
-
-        # The module gets its own isolated root scope: it can neither see
-        # nor shadow the importer's globals.
-        import_context = Context(file_path)
-        register_builtins(import_context)
-
-        self.loading_modules.add(file_path)
-        interpreter = Interpreter()
-        interpreter.loaded_modules = self.loaded_modules
-        interpreter.loading_modules = self.loading_modules
-        try:
-            result = interpreter.visit(ast.node, import_context)
-        finally:
-            self.loading_modules.discard(file_path)
-
-        if result.error:
-            res.failure(result.error)
-            return None
-
-        self.loaded_modules[file_path] = import_context
-        return import_context
-
-    def _module_exports(self, module_context):
-        """Names exported by a module: everything except builtins."""
-        return {
-            name: entry
-            for name, entry in module_context.variables.variables.items()
-            if not isinstance(entry["value"], BuiltinFunction)
-        }
-
-    def visit_ImportNode(self, node, context):
-        res = RunTimeResult()
-        file_path = node.module_to_import
-        symbols_to_import = node.symbols  # None or list of names
-
-        if file_path in self.loading_modules:
-            return res.failure(
-                CircularImportError(
-                    node.pos_start,
-                    node.pos_end,
-                    f"Circular import detected: '{file_path}' is already being loaded.",
-                )
-            )
-
-        module_context = self._load_module(node, res, file_path)
-        if module_context is None:
-            return res
-
-        exports = self._module_exports(module_context)
-
-        # Two-pass: validate every requested symbol before injecting any,
-        # so a failure never leaves partially imported state.
-        if symbols_to_import is not None:
-            missing = [s for s in symbols_to_import if s not in exports]
-            if missing:
-                return res.failure(
-                    RunTimeError(
-                        node.pos_start,
-                        node.pos_end,
-                        f"Symbol(s) {', '.join(repr(s) for s in missing)} "
-                        f"not found in module '{file_path}'.",
-                    )
-                )
-            selected = {s: exports[s] for s in symbols_to_import}
-        else:
-            selected = exports
-
-        # Inject copies of the entries through define(), so existing local
-        # variables, consts, and builtins are protected from overwrite and
-        # the importer never shares mutable binding state with the module.
-        for name, entry in selected.items():
-            value = entry["value"]
-            if hasattr(value, "copy") and isinstance(value, (List, Array)):
-                value = value.copy()
-            _, error = context.variables.set_pos(node.pos_start, node.pos_end).define(
-                name=name,
-                data_type=entry["type"],
-                value=value,
-                is_const=entry["is_const"],
-            )
-            if error:
-                return res.failure(error)
-
-        return res.success(
-            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_NaNNode(self, node, context):
-        res = RunTimeResult()
-        return res.success(
-            NaN().set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_InfinityNode(self, node, context):
-        return RunTimeResult().success(
-            Inf().set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
-
-    def _require_int(self, value, node, label="Index"):
-        """Converts a runtime Number to a Python int.
-
-        Booleans and floats are rejected; integers pass through.
-        Returns (int, None) or (None, error).
-        """
-        if not isinstance(value, Number) or isinstance(value.value, float):
-            return None, RunTimeError(
-                node.pos_start,
-                node.pos_end,
-                f"{label} must be an integer Number.",
-            )
-        return int(value.value), None
-
-    def visit_MethodCallNode(self, node, context):
-        res = RunTimeResult()
-        obj = res.register(self.visit(node.object_node, context))
-        if res.error:
-            return res
-
-        method_name = node.method_name_tok.value
-        args = []
-        for arg in node.arg_nodes:
-            arg_val = res.register(self.visit(arg, context))
-            if res.error:
-                return res
-            args.append(arg_val)
-
-        if not isinstance(obj, (List, Array)):
-            return res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    f"'{method_name}' is not a method of {obj.__class__.__name__}",
-                )
-            )
-
-        arities = {
-            "push": (1, 2),
-            "append": (1, 1),
-            "swap": (2, 2),
-            "delete": (1, 1),
-            "drop": (2, 2),
-        }
-        if method_name not in arities:
-            return res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    f"'{method_name}' is not a method of {obj.__class__.__name__}. "
-                    "Supported methods: push, append, swap, delete, drop.",
-                )
-            )
-
-        lo, hi = arities[method_name]
-        if not (lo <= len(args) <= hi):
-            expected = str(lo) if lo == hi else f"{lo} to {hi}"
-            return res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    f"'{method_name}' expects {expected} argument(s), got {len(args)}.",
-                )
-            )
-
-        # All mutating methods operate on the SAME list/array object.
-        # Only 'drop' returns a value: the extracted slice as a new List.
-        if method_name == "push":
-            index = None
-            if len(args) == 2:
-                index, err = self._require_int(args[1], node)
-                if err:
-                    return res.failure(err)
-            _, error = obj.push(args[0], index)
-        elif method_name == "append":
-            _, error = obj.append(args[0])
-        elif method_name == "swap":
-            index, err = self._require_int(args[1], node)
-            if err:
-                return res.failure(err)
-            _, error = obj.swap(args[0], index)
-        elif method_name == "delete":
-            index, err = self._require_int(args[0], node)
-            if err:
-                return res.failure(err)
-            _, error = obj.delete(index)
-        else:  # drop
-            start, err = self._require_int(args[0], node, "Slice start")
-            if err:
-                return res.failure(err)
-            end, err = self._require_int(args[1], node, "Slice end")
-            if err:
-                return res.failure(err)
-            removed, error = obj.drop(start, end)
-            if error:
-                return res.failure(error)
-            return res.success(
-                removed.set_context(context).set_pos(node.pos_start, node.pos_end)
-            )
-
-        if error:
-            return res.failure(error)
-        return res.success(
-            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_PassNode(self, node, context):
-        return RunTimeResult().success(
-            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
-
-    def visit_BreakNode(self, node, context):
-        res = RunTimeResult()
-        if not self._inside_loop(context):
-            return res.failure(
-                RunTimeError(node.pos_start, node.pos_end, "'break' outside loop.")
-            )
-        res.should_break = True
-        res.value = Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
-        return res
-
-    def visit_ContinueNode(self, node, context):
-        res = RunTimeResult()
-        if not self._inside_loop(context):
-            return res.failure(
-                RunTimeError(node.pos_start, node.pos_end, "'continue' outside loop.")
-            )
-        res.should_continue = True
-        res.value = Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
-        return res
-
-    def visit_TryNode(self, node, context):
-        res = RunTimeResult()
-
-        # Leaking: `var` inside `try` must be visible outside (same context, no isolation)
-        res.register(self.visit(node.body_node, context))
-        if res.error:
-            return res
-        if res.func_return_value is not None:
-            return res
-        if res.should_break or res.should_continue:
-            return res
-
-        return res.success(
-            Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
-        )
+        return res.success(StructDefNode(name_tok, member_nodes, pos_end))

@@ -361,22 +361,52 @@ class PassNode:
         return "pass"
 
 
-class TryNode:
-    def __init__(self, pos_start, pos_end, body_node):
-        self.pos_start = pos_start
-        self.pos_end = pos_end
-        self.body_node = body_node
-
-    def __repr__(self):
-        return f"try {self.body_node}"
-
-
 class CatchNode:
-    def __init__(self, pos_start, pos_end, exception: None, body_node):
+    def __init__(
+        self, pos_start, pos_end, body_node, exception=None, exception_var=None
+    ):
         self.pos_start = pos_start
         self.pos_end = pos_end
         self.exception = exception
+        self.exception_var = exception_var
         self.body_node = body_node
 
     def __repr__(self):
-        return f"catch ({self.exception}) {{{self.body_node}}}"
+        if self.exception_var:
+            return f"catch({self.exception} {self.exception_var}) {{{self.body_node}}}"
+        return f"catch({self.exception}) {{{self.body_node}}}"
+
+
+class TryCatchNode:
+    def __init__(self, pos_start, pos_end, try_body, catch_nodes):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        self.try_body = try_body
+        self.catch_nodes = catch_nodes  # list of CatchNode, at least one required
+
+    def __repr__(self):
+        catches = " ".join(str(c) for c in self.catch_nodes)
+        return f"try {self.try_body} {catches}"
+
+
+class StructDefNode:
+    def __init__(self, name, member_nodes, pos_end):
+        self.name = name
+        self.member_nodes = member_nodes
+        self.pos_start = name.pos_start
+        self.pos_end = pos_end
+
+    def __repr__(self):
+        return f"struct {self.name.value} {{ {self.member_nodes} }}"
+
+
+class PropertyAssignNode:
+    def __init__(self, target, property_name, value):
+        self.target = target
+        self.property_name = property_name
+        self.value = value
+        self.pos_start = target.pos_start
+        self.pos_end = value.pos_end
+
+    def __repr__(self):
+        return f"{self.target}.{self.property_name} = {self.value}"

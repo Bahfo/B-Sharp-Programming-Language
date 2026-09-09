@@ -1,6 +1,5 @@
 # (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved.
 # The source code of B_Sharp Programming Language.
-# (Simple Abstracted Syntax Language)
 # The code is guarded and licensed under the GPLv3 License.
 # ----------------------------------------------------------------
 # Module: instances.py: All B_Sharp datatypes and environment
@@ -40,7 +39,8 @@ class Value:
         return None, RunTimeError(
             self.pos_start,
             self.pos_end,
-            f"Unexpected type for {type(self).__name__.lower()} {op} operation.",
+            "RUN099",
+            {"type_name": type(self).__name__.lower(), "op": op},
         )
 
     def addition(self, other):
@@ -189,7 +189,7 @@ class Number(Value):
                 return None, RunTimeError(
                     self.pos_start,
                     self.pos_end,
-                    "Unallowed division by zero.",
+                    "RUN100",
                 )
             return Number(self.value / other.value), None
         return self._op_error("division")
@@ -201,13 +201,13 @@ class Number(Value):
                 return None, RunTimeError(
                     self.pos_start,
                     self.pos_end,
-                    "'%' integer division requires integer operands.",
+                    "RUN101",
                 )
             if other.value == 0:
                 return None, RunTimeError(
                     self.pos_start,
                     self.pos_end,
-                    "Unallowed division by zero.",
+                    "RUN100",
                 )
             quotient = abs(self.value) // abs(other.value)
             if (self.value < 0) != (other.value < 0):
@@ -221,19 +221,19 @@ class Number(Value):
             return None, RunTimeError(
                 self.pos_start,
                 self.pos_end,
-                "Unexpected type for non-number types in modulo operation.",
+                "RUN102",
             )
         if not isinstance(self.value, int) or not isinstance(other.value, int):
             return None, RunTimeError(
                 self.pos_start,
                 self.pos_end,
-                "'~' modulo requires integer operands.",
+                "RUN103",
             )
         if other.value == 0:
             return None, RunTimeError(
                 self.pos_start,
                 self.pos_end,
-                "Unallowed modulo by zero.",
+                "RUN104",
             )
         remainder = abs(self.value) % abs(other.value)
         if self.value < 0:
@@ -261,14 +261,14 @@ class Number(Value):
                             return None, BSharpMathError(
                                 self.pos_start,
                                 self.pos_end,
-                                "Result too large to represent.",
                             )
                         # Emit precision loss warning per D3 requirement
                         try:
                             warn = PrecisionLossWarning(
                                 self.pos_start,
                                 self.pos_end,
-                                f"Huge power {base}^{exponent} approximated as float; precision may be lost.",
+                                base,
+                                exponent,
                             )
                             print(warn, end="", file=sys.stderr)
                         except Exception:
@@ -278,31 +278,31 @@ class Number(Value):
                 result = base**exponent
             except (ValueError, OverflowError):
                 return None, BSharpMathError(
-                    self.pos_start, self.pos_end, "Result too large to represent."
+                    self.pos_start,
+                    self.pos_end,
                 )
             except ZeroDivisionError:
                 return None, RunTimeError(
                     self.pos_start,
                     self.pos_end,
-                    "Unallowed division by zero in exponentiation.",
+                    "RUN105",
                 )
             except Exception:
                 return None, RunTimeError(
                     self.pos_start,
                     self.pos_end,
-                    "Complex numbers are not yet supported.",
+                    "RUN106",
                 )
             if isinstance(result, complex):
                 return None, RunTimeError(
                     self.pos_start,
                     self.pos_end,
-                    "Complex numbers are not yet supported.",
+                    "RUN106",
                 )
             if isinstance(result, float) and math.isinf(result):
                 return None, BSharpMathError(
                     self.pos_start,
                     self.pos_end,
-                    "Result too large to represent.",
                 )
             return Number(result), None
         return self._op_error("power")
@@ -402,7 +402,7 @@ class Boolean(Value):
         return None, ComparisonError(
             self.pos_start,
             self.pos_end,
-            "Unexpected type for 'and' operation.",
+            "CMP002",
         )
 
     def or_(self, other):
@@ -411,7 +411,7 @@ class Boolean(Value):
         return None, ComparisonError(
             self.pos_start,
             self.pos_end,
-            "Unexpected type for 'or' operation.",
+            "CMP003",
         )
 
     def not_(self):
@@ -445,13 +445,13 @@ class String(Value):
                 return None, RunTimeError(
                     self.pos_start,
                     self.pos_end,
-                    "String multiplication requires a non-negative integer power factor.",
+                    "RUN107",
                 )
             return String(self.value * other.value), None
         return None, RunTimeError(
             self.pos_start,
             self.pos_end,
-            "String multiplication requires an integer factor.",
+            "RUN108",
         )
 
     def _reversed_multiplication(self, other):
@@ -641,7 +641,7 @@ class List(Value):
             return ModificationError(
                 self.pos_start,
                 self.pos_end,
-                "Cannot mutate a const list/array (it is immutable). Use 'var' for mutable collections.",
+                "MOD001",
             )
         return None
 
@@ -657,7 +657,8 @@ class List(Value):
             return None, RunTimeError(
                 self.pos_start,
                 self.pos_end,
-                f"Insert index {index} is out of bounds for length {n}.",
+                "RUN109",
+                {"index": index, "length": n},
             )
         return i, None
 
@@ -671,7 +672,8 @@ class List(Value):
             return None, RunTimeError(
                 self.pos_start,
                 self.pos_end,
-                f"Index {index} is out of bounds for length {n}.",
+                "RUN110",
+                {"index": index, "length": n},
             )
         return i, None
 
@@ -769,7 +771,8 @@ class List(Value):
             return None, RunTimeError(
                 self.pos_start,
                 self.pos_end,
-                f"Index {index} is out of bounds for length {n}.",
+                "RUN110",
+                {"index": index, "length": n},
             )
         if i < n:
             # validate element type if this is a typed Array (overridden in Array)
@@ -781,10 +784,12 @@ class List(Value):
                 Empty().set_pos(self.pos_start, self.pos_end).set_context(self.context)
             )
         self.list_of_elements.append(element)
-        # if we extended, we now have i+1 elements; but if i == n we just appended, if i > n we padded
+        # if we extended, we now have i+1 elements; but if i == n we just appended,
+        # if i > n we padded
         # For i == n case, the while loop didn't run and append gives correct
         # For i > n, we padded to i then appended -> length i+1 correct
-        # However the above does: while len < i: append Empty, then append element -> for i = n+5, we pad 5 empties then element
+        # However the above does: while len < i: append Empty,
+        # then append element -> for i = n+5, we pad 5 empties then element
         return None, None
 
     # ---------- arithmetic ----------
@@ -819,7 +824,7 @@ class List(Value):
                 return None, RunTimeError(
                     self.pos_start,
                     self.pos_end,
-                    f"List multiplication requires both lists to be the same size, got {len(self.list_of_elements)} and {len(other.list_of_elements)}.",
+                    "RUN111",
                 )
 
             new_elements = []
@@ -837,7 +842,8 @@ class List(Value):
         return None, RunTimeError(
             self.pos_start,
             self.pos_end,
-            f"Unsupported type '{type(other).__name__}' for list multiplication.",
+            "RUN112",
+            {"type_name": type(other).__name__},
         )
 
     def division(self, other):
@@ -849,7 +855,7 @@ class List(Value):
                 return None, RunTimeError(
                     self.pos_start,
                     self.pos_end,
-                    "Unallowed division by zero.",
+                    "RUN100",
                 )
             new_elements = []
             for element in self.list_of_elements:
@@ -872,13 +878,14 @@ class List(Value):
             return None, RunTimeError(
                 self.pos_start,
                 self.pos_end,
-                "Division between two lists is not supported.",
+                "RUN113",
             )
 
         return None, RunTimeError(
             self.pos_start,
             self.pos_end,
-            f"Unsupported type '{type(other).__name__}' for list division.",
+            "RUN114",
+            {"type_name": type(other).__name__},
         )
 
     def _reversed_multiplication(self, other):
@@ -957,7 +964,8 @@ class Array(List):
             return RunTimeError(
                 self.pos_start,
                 self.pos_end,
-                f"Expected {self.element_type.__name__} element, got Empty (none). Use Empty[] for none values.",
+                "RUN115",
+                {"expected_type": self.element_type.__name__},
             )
         if isinstance(element, self.element_type):
             return None
@@ -974,7 +982,8 @@ class Array(List):
                         return RunTimeError(
                             self.pos_start,
                             self.pos_end,
-                            f"Expected {self.element_type.__name__} element, got Empty inside nested list.",
+                            "RUN116",
+                            {"expected_type": self.element_type.__name__},
                         )
                     if isinstance(item, self.element_type):
                         continue
@@ -984,13 +993,21 @@ class Array(List):
                     return RunTimeError(
                         self.pos_start,
                         self.pos_end,
-                        f"Expected {self.element_type.__name__} element, got {type(item).__name__} inside nested list.",
+                        "RUN117",
+                        {
+                            "expected_type": self.element_type.__name__,
+                            "actual_type": type(item).__name__,
+                        },
                     )
             return None
         return RunTimeError(
             self.pos_start,
             self.pos_end,
-            f"Expected {self.element_type.__name__} element, got {type(element).__name__}.",
+            "RUN118",
+            {
+                "expected_type": self.element_type.__name__,
+                "actual_type": type(element).__name__,
+            },
         )
 
     def _validate_all(self):
@@ -1010,7 +1027,8 @@ class Array(List):
         return None, RunTimeError(
             self.pos_start,
             self.pos_end,
-            f"Unsupported type '{type(other).__name__}' for array multiplication.",
+            "RUN119",
+            {"type_name": type(other).__name__},
         )
 
     def division(self, other):
@@ -1019,7 +1037,7 @@ class Array(List):
                 return None, RunTimeError(
                     self.pos_start,
                     self.pos_end,
-                    "Unallowed division by zero.",
+                    "RUN100",
                 )
             elements, error = List.division(self, other)
             if error:
@@ -1029,7 +1047,7 @@ class Array(List):
         return None, RunTimeError(
             self.pos_start,
             self.pos_end,
-            "Division between two arrays or lists is not supported.",
+            "RUN120",
         )
 
     def is_equal(self, other):
@@ -1064,7 +1082,10 @@ class Array(List):
         return self._new_array(new_elements)
 
     def drop(self, start, end):
-        """Remove slice [start:end] in place; return it as same typed array. Clamps like slice."""
+        """
+        Remove slice [start:end] in place; return it as same typed array.
+        Clamps like slice.
+        """
         err = self._check_mutable()
         if err:
             return None, err
@@ -1089,7 +1110,10 @@ class Array(List):
         return self._new_array(deep_removed), None
 
     def assign_at(self, index, element):
-        """Dynamic assignment for typed arrays – validates type then delegates with type-appropriate padding."""
+        """
+        Dynamic assignment for typed arrays - validates type then
+        delegates with type-appropriate padding.
+        """
         err = self._validate_element(element)
         if err:
             return None, err
@@ -1106,7 +1130,8 @@ class Array(List):
             return None, RunTimeError(
                 self.pos_start,
                 self.pos_end,
-                f"Index {index} is out of bounds for length {n}.",
+                "RUN110",
+                {"index": index, "length": n},
             )
         if i < n:
             self.list_of_elements[i] = element
@@ -1187,6 +1212,52 @@ class Tuple(Value):
     """
     A complex datatype representing an immutable container of data.
     """
+
+
+class ErrorInstance(Value):
+    """
+    Support for error catching in B#. This class helps in `try-catch` phases
+    while catching an error.
+    """
+
+    def __init__(self, error: Error):
+        super().__init__()
+
+        self.error = error
+        self.type_name = error.__class__.__name__
+
+    def get_property(self, name):
+        """Expose Python Error properties directly to B# code"""
+        if name == "name":
+            return String(self.error.error_name)
+        if name == "details":
+            return String(str(self.error.details))
+        if name == "line":
+            return (
+                Number(self.error.pos_start.line + 1)
+                if self.error.pos_start
+                else Number(0)
+            )
+        if name == "file":
+            return (
+                String(self.error.pos_start.file_name)
+                if self.error.pos_start
+                else String("")
+            )
+        if name == "type":
+            return String(self.type_name)
+        return None
+
+    def __str__(self):
+        try:
+            if hasattr(self.error, "as_string"):
+                return self.error.as_string()
+        except Exception:
+            pass
+        return f"{self.type_name}: {self.error.details}"
+
+    def __repr__(self):
+        return self.__str__()
 
 
 class Context:
@@ -1274,20 +1345,18 @@ class EnvironmentVariable:
     def define(self, name, data_type, value, is_const=False):
         """Declares a new variable in current environment scope."""
 
-        # 1. Check for redefinition
         if name in self.variables:
             return None, AssignmentError(
                 self.pos_start,
                 self.pos_end,
-                f"Attempting to redefine '{name}' which was already defined.",
+                "ASN001",
+                {"name": name},
             )
 
-        # 2. Check for type mismatch
         type_error = self._type_mismatch_error(data_type, value)
         if type_error:
             return None, type_error
 
-        # 3. For const collections, deep copy so `const b = a` does not mutate `a`
         if is_const and isinstance(value, (List, Array)):
 
             def _deep_copy(v):
@@ -1322,7 +1391,6 @@ class EnvironmentVariable:
 
             value = _deep_copy(value)
 
-        # 4. Store symbol entry
         self.variables[name] = {
             "type": data_type,
             "value": value,
@@ -1336,32 +1404,30 @@ class EnvironmentVariable:
         if pos_start is None:
             pos_start, pos_end = self.pos_start, self.pos_end
 
-        # Check existence
         if name not in self.variables:
             if self.parent is not None:
                 return self.parent.assign(name, value, pos_start, pos_end)
             return None, AssignmentError(
                 pos_start,
                 pos_end,
-                f"Attempting to access an unassigned variable '{name}'.",
+                "ASN002",
+                {"name": name},
             )
 
         entry = self.variables[name]
 
-        # Check immutability (const)
         if entry["is_const"]:
             return None, ModificationError(
                 pos_start,
                 pos_end,
-                f"Cannot change value of '{name}' of type const.",
+                "MOD002",
+                {"name": name},
             )
 
-        # Check type compatibility
         type_error = self._type_mismatch_error(entry["type"], value, pos_start, pos_end)
         if type_error:
             return None, type_error
 
-        # Update value
         entry["value"] = value
         return value, None
 
@@ -1377,7 +1443,8 @@ class EnvironmentVariable:
             return None, AssignmentError(
                 pos_start,
                 pos_end,
-                f"'{name}' is not defined.",
+                "ASN003",
+                {"name": name},
             )
         return self.variables[name]["value"], None
 
@@ -1393,7 +1460,8 @@ class EnvironmentVariable:
             return None, AssignmentError(
                 pos_start,
                 pos_end,
-                f"'{name}' is not defined.",
+                "ASN003",
+                {"name": name},
             )
         return self.variables[name]["type"], None
 
@@ -1409,7 +1477,6 @@ class EnvironmentVariable:
         if value is None:  # Uninitialized value is treated as `none`
             return None
 
-        # Explicit Empty declaration requires an Empty instance
         if data_type is Empty:
             if isinstance(value, Empty):
                 return None
@@ -1417,10 +1484,10 @@ class EnvironmentVariable:
             return AssignmentError(
                 pos_start,
                 pos_end,
-                f"Cannot assign value of type {val_type_str} to a variable declared with Empty.",
+                "ASN004",
+                {"actual_type": val_type_str},
             )
 
-        # Strongly typed variable: only accepts exact type (Empty not allowed for non-Empty types)
         if isinstance(value, data_type):
             return None
 
@@ -1428,7 +1495,8 @@ class EnvironmentVariable:
         return AssignmentError(
             pos_start,
             pos_end,
-            f"Cannot assign value of type {val_type_str} to a variable declared with {data_type.__name__}.",
+            "ASN005",
+            {"actual_type": val_type_str, "expected_type": data_type.__name__},
         )
 
 
@@ -1451,7 +1519,7 @@ class Function(Value):
         self.set_pos()
 
     def execute(self, args, interpreter, call_pos_start=None, call_pos_end=None):
-        from B_Sharp.ASTNodes.parser import RunTimeResult
+        from B_Sharp.ASTNodes.interpreter import RunTimeResult
 
         res = RunTimeResult()
 
@@ -1473,7 +1541,12 @@ class Function(Value):
                 RunTimeError(
                     err_pos_start,
                     err_pos_end,
-                    f"Function '{self.name}' expects {expected_count} {arg_label}, but got {len(args)}.",
+                    "RUN122",
+                    {
+                        "func_name": self.name,
+                        "expected": expected_count,
+                        "actual": len(args),
+                    },
                 )
             )
 
@@ -1543,7 +1616,12 @@ class Function(Value):
                     RunTimeError(
                         err_pos_start,
                         err_pos_end,
-                        f"Function '{self.name}' returned type {val_type_str}, expected {self.return_type.__name__}.",
+                        "RUN123",
+                        {
+                            "func_name": self.name,
+                            "actual_type": val_type_str,
+                            "expected_type": self.return_type.__name__,
+                        },
                     )
                 )
 
@@ -1566,6 +1644,59 @@ class Function(Value):
         return f"<function {self.name}>"
 
 
+class StructDefinition(Value):
+    """
+    Structures Instance for B-Sharp `struct`.
+
+    A `struct` (structure) in B-Sharp, is a data model to organize data
+    inside, it houses multiple assignment of variables in an organized way
+    that keeps them all grouped to one *super-variable*
+    """
+
+    def __init__(self, name, member_nodes, parent_context=None):
+        self.name = name
+        self.member_nodes = member_nodes
+        self.parent_context = parent_context
+        self.set_pos()
+
+    def instantiate(self, interpreter, pos_start=None, pos_end=None):
+        exec_context = Context(
+            display_name=f"<struct {self.name}>", parent=self.parent_context
+        )
+
+        for node in self.member_nodes:
+            res = interpreter.visit(node, exec_context)
+            if res.error:
+                return None, res.error
+
+        instance = StructInstance(self.name, exec_context.variables)
+        return instance, None
+
+    def __repr__(self):
+        return f"<struct_def {self.name}>"
+
+
+class StructInstance(Value):
+    def __init__(self, struct_name, environment):
+        self.struct_name = struct_name
+        self.environment = environment
+
+        self.set_pos()
+        self.set_context()
+
+    def get_field(self, name, pos_start=None, pos_end=None):
+        return self.environment.get(name, pos_start, pos_end)
+
+    def set_field(self, name, value, pos_start=None, pos_end=None):
+        return self.environment.assign(name, value, pos_start, pos_end)
+
+    def __repr__(self):
+        fields = ", ".join(
+            f"{k}: {v['value']}" for k, v in self.environment.variables.items()
+        )
+        return f"{self.struct_name} {{ {fields} }}"
+
+
 # A helper dictionary for all declared types.
 # Only these canonical uppercase spellings are valid type annotations.
 TYPE_MAP = {
@@ -1582,16 +1713,31 @@ TYPE_MAP = {
     "Boolean[]": BooleanArray,
     "Bool[]": BooleanArray,
     "Empty[]": EmptyArray,
+    "StructDefinition": StructDefinition,
+}
+
+ERROR_TYPE_MAP = {
+    "Error": Error,
+    "B_SharpSyntaxError": B_SharpSyntaxError,
+    "RunTimeError": RunTimeError,
+    "AssignmentError": AssignmentError,
+    "ModificationError": ModificationError,
+    "ComparisonError": ComparisonError,
+    "BSharpMathError": BSharpMathError,
+    "ShadowingError": ShadowingError,
 }
 
 
-def _default_for_type(data_type_class, pos_start=None, pos_end=None, context=None):
-    """Returns type-appropriate fallback value for implicit `var x : Type;` without initializer.
-
-    Table per Docs/1_Common/2_data_types.md:136:
-      Number -> 0, String -> "", Bool -> false, Empty -> none,
-      Inf -> +inf, NaN -> nan, List/Number[]/etc -> [], no type -> none
+def _default_for_type(
+    data_type_class,
+    pos_start=None,
+    pos_end=None,
+    context=None,
+):
+    """Returns type-appropriate fallback value for
+    implicit `var x : Type;` without initializer.
     """
+
     def _set(v):
         v.set_pos(pos_start, pos_end)
         v.set_context(context)
@@ -1621,7 +1767,7 @@ def _default_for_type(data_type_class, pos_start=None, pos_end=None, context=Non
         return _set(BooleanArray([]))
     if data_type_class is EmptyArray:
         return _set(EmptyArray([]))
-    # Fallback for aliased Bool[] etc already mapped to BooleanArray, but handle generically
+
     if issubclass(data_type_class, Array):
         try:
             return _set(data_type_class([]))
@@ -1630,5 +1776,4 @@ def _default_for_type(data_type_class, pos_start=None, pos_end=None, context=Non
     return _set(Empty())
 
 
-# alias without underscore for star-import in parser.py
 default_for_type = _default_for_type

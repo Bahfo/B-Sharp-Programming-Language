@@ -25,7 +25,7 @@ class BuiltinFunction:
         return True
 
     def execute(self, args, interpreter, call_pos_start=None, call_pos_end=None):
-        from B_Sharp.ASTNodes.parser import RunTimeResult
+        from B_Sharp.ASTNodes.interpreter import RunTimeResult
 
         res = RunTimeResult()
         self.pos_start = call_pos_start
@@ -34,7 +34,10 @@ class BuiltinFunction:
             result = self.func(args, context=self.context, call_node=None)
         except Exception as e:
             return res.failure(
-                RunTimeError(call_pos_start, call_pos_end, f"{self.name}: {e}")
+                RunTimeError(call_pos_start, call_pos_end, "RUN130", {
+                    "function_name": self.name,
+                    "error_details": str(e)
+                })
             )
         if isinstance(result, tuple):
             value, error = result
@@ -58,6 +61,15 @@ def _render_for_print(value):
     else via its repr (so nested strings inside lists stay quoted)."""
     if isinstance(value, String):
         return value.value
+    if isinstance(value, ErrorInstance):
+        try:
+            return (
+                value.error.as_string()
+                if hasattr(value.error, "as_string")
+                else str(value)
+            )
+        except Exception:
+            return str(value)
     return str(value)
 
 
@@ -76,14 +88,10 @@ def _format(args, context, call_node):
     import re
 
     if len(args) < 1:
-        return None, RunTimeError(
-            None, None, "'format' expects at least 1 argument (template string)."
-        )
+        return None, RunTimeError(None, None, "RUN131")
     template = args[0]
     if not isinstance(template, String):
-        return None, RunTimeError(
-            None, None, "First argument to 'format' must be a String."
-        )
+        return None, RunTimeError(None, None, "RUN132")
     fmt_map = {str(i): str(arg) for i, arg in enumerate(args[1:])}
     result = re.sub(
         r"\{(\d+)\}", lambda m: fmt_map.get(m.group(1), m.group(0)), template.value
@@ -97,7 +105,7 @@ def _read(args, context, call_node):
     except EOFError:
         return String(""), None
     except OSError as e:
-        return None, RunTimeError(None, None, f"read failed: {e}")
+        return None, RunTimeError(None, None, "RUN133", {"error_details": str(e)})
     except KeyboardInterrupt:
         return String(""), None
 
@@ -114,38 +122,38 @@ def _readln(args, context, call_node):
     except EOFError:
         return String(""), None
     except OSError as e:
-        return None, RunTimeError(None, None, f"readln failed: {e}")
+        return None, RunTimeError(None, None, "RUN134", {"error_details": str(e)})
     except KeyboardInterrupt:
         return String(""), None
 
 
 def _is_string(args, context, call_node):
     if len(args) != 1:
-        return None, RunTimeError(None, None, "'is_String' expects 1 argument.")
+        return None, RunTimeError(None, None, "RUN135", {"function_name": "is_String"})
     return Boolean(isinstance(args[0], String)), None
 
 
 def _is_number(args, context, call_node):
     if len(args) != 1:
-        return None, RunTimeError(None, None, "'is_Number' expects 1 argument.")
+        return None, RunTimeError(None, None, "RUN135", {"function_name": "is_Number"})
     return Boolean(isinstance(args[0], Number)), None
 
 
 def _is_empty(args, context, call_node):
     if len(args) != 1:
-        return None, RunTimeError(None, None, "'is_Empty' expects 1 argument.")
+        return None, RunTimeError(None, None, "RUN135", {"function_name": "is_Empty"})
     return Boolean(isinstance(args[0], Empty)), None
 
 
 def _is_bool(args, context, call_node):
     if len(args) != 1:
-        return None, RunTimeError(None, None, "'is_Bool' expects 1 argument.")
+        return None, RunTimeError(None, None, "RUN135", {"function_name": "is_Bool"})
     return Boolean(isinstance(args[0], Boolean)), None
 
 
 def _to_number(args, context, call_node):
     if len(args) != 1:
-        return None, RunTimeError(None, None, "'to_Number' expects 1 argument.")
+        return None, RunTimeError(None, None, "RUN135", {"function_name": "to_Number"})
     val = args[0]
     if isinstance(val, Number):
         return val, None
@@ -162,27 +170,39 @@ def _to_number(args, context, call_node):
                 return Number(int(s)), None
         except ValueError:
             return None, RunTimeError(
-                None, None, f"Cannot convert '{val.value}' to a number."
+                None, None, "RUN136", {"value": val.value}
             )
     if isinstance(val, Boolean):
         return Number(1 if val.value else 0), None
     return None, RunTimeError(
-        None, None, f"Cannot convert {type(val).__name__} to Number."
+        None, None, "RUN137", {"type_name": type(val).__name__}
     )
 
 
 def _to_string(args, context, call_node):
     if len(args) != 1:
-        return None, RunTimeError(None, None, "'to_String' expects 1 argument.")
+        return None, RunTimeError(None, None, "RUN135", {"function_name": "to_String"})
     val = args[0]
     if isinstance(val, String):
         return val, None
+    if isinstance(val, ErrorInstance):
+        try:
+            return (
+                String(
+                    val.error.as_string()
+                    if hasattr(val.error, "as_string")
+                    else str(val)
+                ),
+                None,
+            )
+        except Exception:
+            return String(str(val)), None
     return String(str(val)), None
 
 
 def _time_(args, context, call_node):
     if len(args) != 0:
-        return None, RunTimeError(None, None, "'time' function requires no arguments.")
+        return None, RunTimeError(None, None, "RUN138")
     return Number(time.time())
 
 

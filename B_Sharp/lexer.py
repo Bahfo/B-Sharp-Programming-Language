@@ -65,7 +65,6 @@ class Lexer:
                     return None, DoubleFloatingAssignedError(
                         pos_start,
                         self.pos,
-                        "A number literal cannot contain more than one decimal point.",
                     )
 
                 if self.peek() is None or self.peek() not in DIGITS:
@@ -127,7 +126,7 @@ class Lexer:
         return None, B_SharpSyntaxError(
             pos_start,
             self.pos,
-            "Expected an equalizer after NOT logical operation",
+            "SYN001",
         )
 
     def make_token_equal(self):
@@ -190,7 +189,8 @@ class Lexer:
                     return None, B_SharpSyntaxError(
                         pos_start,
                         self.pos,
-                        f"Invalid escape sequence '\\{char}'.",
+                        "SYN002",
+                        {"char": char}
                     )
                 escape_character = False
             else:
@@ -204,7 +204,8 @@ class Lexer:
             return None, B_SharpSyntaxError(
                 pos_start,
                 self.pos,
-                f"Unterminated string literal, expected closing {quote_char}.",
+                "SYN003",
+                {"quote_char": quote_char}
             )
 
         self.forward()
@@ -226,7 +227,7 @@ class Lexer:
             return B_SharpSyntaxError(
                 pos_start=self.pos.copy(),
                 pos_end=self.pos.copy(),
-                details="Unterminated block comment. Expected closing '*/'.",
+                error_code="SYN004",
             )
 
         return None
@@ -322,7 +323,7 @@ class Lexer:
                     return [], B_SharpSyntaxError(
                         pos_start,
                         self.pos,
-                        "The '**' operator is not defined.",
+                        "SYN005",
                     )
                 tokens.append(Token(TOKEN_MUL, pos_start=pos_start, pos_end=self.pos))
             elif self.current_char == "/":
