@@ -115,6 +115,9 @@ class Lexer:
         # Returning the new token
         return Token(token_type, identifier, pos_start, self.pos)
 
+    # For compatability reasons, this function's name stayed make_token_not_equal
+    # even though it also identifies the caller macro 'pragma' and its behavior,
+    # we can change it, but let's face it, we are lazy too much to find and replace.
     def make_token_not_equal(self):
         pos_start = self.pos.copy()
         self.forward()
@@ -123,11 +126,29 @@ class Lexer:
             self.forward()
             return Token(TOKEN_NOT_E, pos_start=pos_start, pos_end=self.pos), None
 
-        return None, B_SharpSyntaxError(
-            pos_start,
-            self.pos,
-            "SYN001",
-        )
+        return self.check_pragma(pos_start)
+
+    def check_pragma(self, bang_pos):
+        """
+        Function to check caller macros by identifiying if the keyword
+        after the (!) mark is `pragma`.
+        """
+        pos_start = self.pos.copy()
+        identifier = ""
+
+        while self.current_char is not None and self.current_char in LETTERS_DIGITS:
+            identifier += self.current_char
+            self.forward()
+
+        if identifier == "":
+            return None, B_SharpSyntaxError(bang_pos, self.pos, "SYN068")
+
+        if identifier in possible_macros:
+            return Token(TOKEN_MACRO, identifier, pos_start, self.pos), None
+        else:
+            return None, B_SharpSyntaxError(
+                pos_start, self.pos, "SYN074", {"name": identifier}
+            )
 
     def make_token_equal(self):
         pos_start = self.pos.copy()
@@ -187,10 +208,7 @@ class Lexer:
                     string_val += escape_characters[char]
                 else:
                     return None, B_SharpSyntaxError(
-                        pos_start,
-                        self.pos,
-                        "SYN002",
-                        {"char": char}
+                        pos_start, self.pos, "SYN002", {"char": char}
                     )
                 escape_character = False
             else:
@@ -202,10 +220,7 @@ class Lexer:
 
         if self.current_char != quote_char:
             return None, B_SharpSyntaxError(
-                pos_start,
-                self.pos,
-                "SYN003",
-                {"quote_char": quote_char}
+                pos_start, self.pos, "SYN003", {"quote_char": quote_char}
             )
 
         self.forward()

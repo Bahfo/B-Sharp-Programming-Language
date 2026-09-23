@@ -3,13 +3,30 @@
   "displayName": "BSharp Language Support",
   "description": "Syntax highlighting and keywords autocompletion support for B-Sharp Programming Language.",
   "publisher": "excellent-techstacks",
-  "version": "0.0.1",
+  "version": "0.1.0",
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Bahfo/B-Sharp-Programming-Language.git"
+  },
+  "keywords": [
+    "bsharp",
+    "b-sharp",
+    "b#",
+    "language",
+    "syntax-highlighting"
+  ],
   "engines": {
     "vscode": "^1.125.0"
   },
   "categories": [
     "Programming Languages"
   ],
+  "scripts": {
+    "compile": "vsce package --allow-missing-repository --out out/",
+    "package": "vsce package --allow-missing-repository --out out/",
+    "install": "code --install-extension out/*.vsix --force"
+  },
   "contributes": {
     "languages": [{
       "id": "bsharp",

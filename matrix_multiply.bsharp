@@ -2,15 +2,17 @@
 // Dosen't measure for edge cases, but it shows that B-Sharp is 
 // completed with needed features for later upgrades.
 
+!pragma enforce
+
 fn make_zeros(num_rows : Number, num_cols : Number) -> Number[] {
     var row : Number[] = []
     var output_matrix : Number[] = []
 
-    for (var i = 0; i < num_rows; i++) {
+    for (var i : Number = 0; i < num_rows; i++) {
         row[i] = 0;
     }
 
-    for (var j = 0; j < num_cols; j++) {
+    for (var j : Number = 0; j < num_cols; j++) {
         output_matrix[j] = row
     }
 
@@ -18,17 +20,17 @@ fn make_zeros(num_rows : Number, num_cols : Number) -> Number[] {
 }
 
 fn multiply_matrices(x : Number[], y : Number[]) -> Number[] {
-    var rowsX = x.length;
-    var rowsY = y.length;
-    var colsX = if (x[0].type == "Number") then 1 else {x[0].length};
-    var colsY = y[0].length;
+    var rowsX : Number = x.length;
+    var rowsY : Number = y.length;
+    var colsX : Number = if (x[0].type == "Number") then 1 else {x[0].length};
+    var colsY : Number = y[0].length;
 
     var matrix_output : Number[] = make_zeros(colsX, rowsY)
 
-    for (var i = 0; i < rowsX; i++) {
-        for (var j = 0; j < colsY; j++) {
-            var sum = 0;
-            for (var k = 0; k < colsX; k++) {
+    for (var i : Number = 0; i < rowsX; i++) {
+        for (var j : Number = 0; j < colsY; j++) {
+            var sum : Number = 0;
+            for (var k : Number = 0; k < colsX; k++) {
                 sum = sum + x[i][k] * y[k][j];
             }
             matrix_output[i][j] = sum;
@@ -38,6 +40,6 @@ fn multiply_matrices(x : Number[], y : Number[]) -> Number[] {
     return matrix_output;
 }
 
-var x = [2, 3]
-var y = [[1,2],[0,0]]
+var x : Number[] = [2, 3]
+var y : Number[] = [[1,2],[0,0]]
 writeln(multiply_matrices(x, y))

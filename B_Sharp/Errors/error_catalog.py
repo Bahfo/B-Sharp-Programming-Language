@@ -378,29 +378,75 @@ ERROR_CATALOG = {
     "SYN067": {
         "name": "Syntax Error",
         "message": "Expected 'return'",
-        "hint": "Use 'return value' to return from a function"
+        "hint": "Use 'return value' to return from a function",
     },
-    
+    "SYN068": {
+        "name": "Syntax Error",
+        "message": "Expected a caller macro after exclamation.",
+        "hint": "Use on of the predefined caller macros.",
+    },
     # Struct Errors
     "SYN070": {
         "name": "Syntax Error",
         "message": "Expected 'struct'",
-        "hint": "Use 'struct Name { ... }' to define a struct"
+        "hint": "Use 'struct Name { ... }' to define a struct",
     },
     "SYN071": {
         "name": "Syntax Error",
         "message": "Expected struct name identifier",
-        "hint": "Provide a name for the struct: struct Name { ... }"
+        "hint": "Provide a name for the struct: struct Name { ... }",
     },
     "SYN072": {
         "name": "Syntax Error",
         "message": "Expected '{{' after struct name",
-        "hint": "Start the struct body with '{{'"
+        "hint": "Start the struct body with '{{'",
     },
     "SYN073": {
         "name": "Syntax Error",
         "message": "Only variable declarations are allowed inside struct",
-        "hint": "Structures may not include any non-variable definition code blocks"
+        "hint": "Structures may not include any non-variable definition code blocks",
+    },
+    "SYN074": {
+        "name": "Syntax Error",
+        "message": "Unknown caller macro '{name}'.",
+        "hint": "Use one of the predefined caller macros (e.g. 'pragma').",
+    },
+    "SYN069": {
+        "name": "Syntax Error",
+        "message": "Caller macros must appear at the top of the file, before any code.",
+        "hint": "Move all '!pragma' lines to the file header before any statements",
+    },
+    # ==================== ENFORCE ERRORS ====================
+    "SYN075": {
+        "name": "Syntax Error",
+        "message": "'!pragma enforce' requires a type annotation for '{var_names}'.",
+        "hint": "Declare variables with an explicit type: 'var x : Number = ...'",
+    },
+    "SYN076": {
+        "name": "Syntax Error",
+        "message": "'!pragma enforce' requires a type for parameter '{param}' of '{func}'.",
+        "hint": "Declare function parameters with an explicit type: '(value : Number)'",
+    },
+    "SYN077": {
+        "name": "Syntax Error",
+        "message": "'!pragma enforce' requires function '{func}' to declare a return type.",
+        "hint": "Add '-> Type' (use '-> Empty' for procedures that return nothing)",
+    },
+    # ==================== PRAGMA ARGUMENT ERRORS ====================
+    "SYN078": {
+        "name": "Syntax Error",
+        "message": "Invalid argument for 'precision'. Expected an integer from 0 to 12 or 'default'.",
+        "hint": "Usage: '!pragma precision 4' or '!pragma precision default'",
+    },
+    "SYN079": {
+        "name": "Syntax Error",
+        "message": "Caller macro '{name}' does not take arguments.",
+        "hint": "Remove the argument (e.g. '!pragma enforce')",
+    },
+    "SYN080": {
+        "name": "Syntax Error",
+        "message": "Unknown pragma directive '{name}'.",
+        "hint": "Known directives: 'enforce', 'precision'",
     },
     # ==================== RUNTIME ERRORS ====================
     # Visitor/Operator Errors

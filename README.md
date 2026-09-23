@@ -39,7 +39,7 @@ The name of the language itself is derived into two parts: `B` which was the gre
 
 B-Sharp in syntax does not feel any different from other programming languages (although it has its own set of additional keywords, definitions, and vocabularies) and it doesn't differentiate for beginners from other higher level languages such as Python and JavaScript. However, what makes B-Sharp different is that it can be compiled into a native source code. This allows for producing native executables, in addition to interpretation (so B# is transpiled) and with the help of the **StandardSDK**. B-Sharp has all tools needed to produce production-ready projects and codes that can be used for enterprise projects.
 
-It doesn't stop there, that is B# can be also very precise. It has special types of macros called *Caller Macros* which define a set of functionalities or features that can be used with B# during runtime or compilation time. Examples of these include `!PRAGMA optimize` which tries to optimize the source code as much as possible. Works for both interpretation and compilation of your source code.
+It doesn't stop there, that is B# can be also very precise. It has special types of macros called *Caller Macros* which define a set of functionalities or features that can be used with B# during runtime or compilation time. Today B# ships `!pragma enforce` (make type annotations mandatory) and `!pragma precision <0..12>` (round and display every number with a fixed number of decimal places). Future macros, e.g. `!pragma optimize`, may be added the same way. Works for both interpretation and compilation of your source code.
 
 ## Using B-Sharp
 

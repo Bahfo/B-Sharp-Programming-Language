@@ -25,19 +25,23 @@ class BuiltinFunction:
         return True
 
     def execute(self, args, interpreter, call_pos_start=None, call_pos_end=None):
+        from types import SimpleNamespace
         from B_Sharp.ASTNodes.interpreter import RunTimeResult
 
         res = RunTimeResult()
         self.pos_start = call_pos_start
         self.pos_end = call_pos_end
         try:
-            result = self.func(args, context=self.context, call_node=None)
+            call_node = SimpleNamespace(pos_start=call_pos_start, pos_end=call_pos_end)
+            result = self.func(args, context=self.context, call_node=call_node)
         except Exception as e:
             return res.failure(
-                RunTimeError(call_pos_start, call_pos_end, "RUN130", {
-                    "function_name": self.name,
-                    "error_details": str(e)
-                })
+                RunTimeError(
+                    call_pos_start,
+                    call_pos_end,
+                    "RUN130",
+                    {"function_name": self.name, "error_details": str(e)},
+                )
             )
         if isinstance(result, tuple):
             value, error = result
@@ -56,43 +60,48 @@ class BuiltinFunction:
         return f"<builtin function {self.name}>"
 
 
-def _render_for_print(value):
+def _render_for_print(value, call_node):
     """Python-style rendering: top-level strings unquoted, everything
-    else via its repr (so nested strings inside lists stay quoted)."""
-    if isinstance(value, String):
-        return value.value
-    if isinstance(value, ErrorInstance):
-        try:
-            return (
-                value.error.as_string()
-                if hasattr(value.error, "as_string")
-                else str(value)
-            )
-        except Exception:
-            return str(value)
-    return str(value)
+    else via its repr (so nested strings inside lists stay quoted).
+    Numbers honour the calling file's precision pragma."""
+    from B_Sharp.CodeExecution.caller_macros import render_value, get_config
+
+    cfg = get_config(call_node.pos_start.file_name if call_node else None)
+    return render_value(value, cfg)
 
 
 def _write(args, context, call_node):
-    sys.stdout.write("".join(_render_for_print(arg) for arg in args))
+    sys.stdout.write("".join(_render_for_print(arg, call_node) for arg in args))
     sys.stdout.flush()
     return Empty()
 
 
 def _writeln(args, context, call_node):
-    print("".join(_render_for_print(arg) for arg in args))
+    print("".join(_render_for_print(arg, call_node) for arg in args))
     return Empty()
 
 
 def _format(args, context, call_node):
     import re
 
+    from B_Sharp.CodeExecution.caller_macros import render_value, get_config
+    from B_Sharp.ASTNodes.instances import Number
+
     if len(args) < 1:
         return None, RunTimeError(None, None, "RUN131")
     template = args[0]
     if not isinstance(template, String):
         return None, RunTimeError(None, None, "RUN132")
-    fmt_map = {str(i): str(arg) for i, arg in enumerate(args[1:])}
+    cfg = get_config(call_node.pos_start.file_name if call_node else None)
+
+    def _fmt_arg(arg):
+        # Preserve historical format() rendering (repr, quoted strings) and
+        # only special-case numbers when a precision pragma is active.
+        if cfg.precision is not None and isinstance(arg, Number):
+            return render_value(arg, cfg)
+        return str(arg)
+
+    fmt_map = {str(i): _fmt_arg(arg) for i, arg in enumerate(args[1:])}
     result = re.sub(
         r"\{(\d+)\}", lambda m: fmt_map.get(m.group(1), m.group(0)), template.value
     )
@@ -152,9 +161,12 @@ def _is_bool(args, context, call_node):
 
 
 def _to_number(args, context, call_node):
+    from B_Sharp.CodeExecution.caller_macros import round_number, get_config
+
     if len(args) != 1:
         return None, RunTimeError(None, None, "RUN135", {"function_name": "to_Number"})
     val = args[0]
+    cfg = get_config(call_node.pos_start.file_name if call_node else None)
     if isinstance(val, Number):
         return val, None
     if isinstance(val, String):
@@ -165,24 +177,23 @@ def _to_number(args, context, call_node):
             if "." in s or "e" in low:
                 num = float(s)
                 # keep as float (consistent with lexer sci notation)
-                return Number(num), None
+                return Number(round_number(num, cfg)), None
             else:
-                return Number(int(s)), None
+                return Number(round_number(int(s), cfg)), None
         except ValueError:
-            return None, RunTimeError(
-                None, None, "RUN136", {"value": val.value}
-            )
+            return None, RunTimeError(None, None, "RUN136", {"value": val.value})
     if isinstance(val, Boolean):
         return Number(1 if val.value else 0), None
-    return None, RunTimeError(
-        None, None, "RUN137", {"type_name": type(val).__name__}
-    )
+    return None, RunTimeError(None, None, "RUN137", {"type_name": type(val).__name__})
 
 
 def _to_string(args, context, call_node):
+    from B_Sharp.CodeExecution.caller_macros import render_value, get_config
+
     if len(args) != 1:
         return None, RunTimeError(None, None, "RUN135", {"function_name": "to_String"})
     val = args[0]
+    cfg = get_config(call_node.pos_start.file_name if call_node else None)
     if isinstance(val, String):
         return val, None
     if isinstance(val, ErrorInstance):
@@ -197,13 +208,16 @@ def _to_string(args, context, call_node):
             )
         except Exception:
             return String(str(val)), None
-    return String(str(val)), None
+    return String(render_value(val, cfg)), None
 
 
 def _time_(args, context, call_node):
+    from B_Sharp.CodeExecution.caller_macros import round_number, get_config
+
     if len(args) != 0:
         return None, RunTimeError(None, None, "RUN138")
-    return Number(time.time())
+    cfg = get_config(call_node.pos_start.file_name if call_node else None)
+    return Number(round_number(time.time(), cfg))
 
 
 BUILTIN_FUNCTIONS = {

@@ -7,6 +7,11 @@ from B_Sharp.ASTNodes.parser import Parser
 from B_Sharp.ASTNodes.instances import Context
 from B_Sharp.builtins import register_builtins
 from B_Sharp.ASTNodes.interpreter import Interpreter
+from B_Sharp.CodeExecution.caller_macros import (
+    preprocess_pragmas,
+    get_config,
+    render_value,
+)
 
 
 def run_source(file_name, source_text, context=None, measure_time=False):
@@ -25,7 +30,11 @@ def run_source(file_name, source_text, context=None, measure_time=False):
     if error:
         return None, error, None
 
-    parser = Parser(tokens)
+    tokens, file_cfg, macro_error = preprocess_pragmas(tokens, file_name)
+    if macro_error:
+        return None, macro_error, None
+
+    parser = Parser(tokens, file_config=file_cfg)
     ast = parser.parser()
     if ast.error:
         return None, ast.error, None
@@ -65,7 +74,7 @@ def run_file(file_path, measure_time=False):
     if error:
         print(error)
     elif value is not None and repr(value) != "none":
-        print(value)
+        print(render_value(value, get_config(file_path)))
 
     if elapsed_time is not None:
         print(f"Measured runtime: {elapsed_time:.6f}s")
@@ -94,7 +103,7 @@ def run_repl():
             if error:
                 print(error)
             elif value is not None and repr(value) != "none":
-                print(value)
+                print(render_value(value, get_config("<stdin>")))
 
         except (KeyboardInterrupt, EOFError):
             print("\nExiting B_Sharp.")

@@ -4,9 +4,13 @@
   "scopeName": "source.bsharp",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#macros" },
     { "include": "#strings" },
+    { "include": "#builtins" },
     { "include": "#keywords" },
+    { "include": "#array-types" },
     { "include": "#types" },
+    { "include": "#error-types" },
     { "include": "#constants" },
     { "include": "#operators" },
     { "include": "#delimiters" },
@@ -27,14 +31,62 @@
         }
       ]
     },
-    "strings": {
-      "name": "string.quoted.double.bsharp",
-      "begin": "\"",
-      "end": "\"",
+    "macros": {
       "patterns": [
         {
-          "name": "constant.character.escape.bsharp",
-          "match": "\\\\."
+          "begin": "^\\s*!\\s*[a-zA-Z_][a-zA-Z0-9_]*",
+          "beginCaptures": {
+            "0": { "name": "keyword.macro.bsharp" }
+          },
+          "end": "$",
+          "patterns": [
+            {
+              "name": "support.function.macro.bsharp",
+              "match": "\\b(enforce|precision|default)\\b"
+            },
+            {
+              "name": "constant.numeric.integer.bsharp",
+              "match": "\\b[0-9]+\\b"
+            },
+            {
+              "name": "comment.line.macro.bsharp",
+              "match": "//.*$"
+            }
+          ]
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.bsharp",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.bsharp",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.bsharp",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.bsharp",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.bsharp",
+          "match": "\\b(write|writeln|format|read|readln|is_String|is_Number|is_Empty|is_Bool|to_Number|to_String|time)\\b"
         }
       ]
     },
@@ -42,7 +94,7 @@
       "patterns": [
         {
           "name": "keyword.control.bsharp",
-          "match": "\\b(if|elif|else|then|for|while|using)\\b"
+          "match": "\\b(if|elif|else|then|do|for|while|try|catch|using|return|break|continue|pass|pragma)\\b"
         },
         {
           "name": "keyword.operator.logical.bsharp",
@@ -54,7 +106,15 @@
         },
         {
           "name": "storage.type.variable.bsharp",
-          "match": "\\b(var|const)\\b"
+          "match": "\\b(var|const|struct)\\b"
+        }
+      ]
+    },
+    "array-types": {
+      "patterns": [
+        {
+          "name": "storage.type.array.bsharp",
+          "match": "\\b(Number|String|Boolean|Bool|Empty)\\[\\]\\b"
         }
       ]
     },
@@ -62,12 +122,24 @@
       "patterns": [
         {
           "name": "entity.name.type.bsharp",
-          "match": "\\b(Number|String|Bool|Empty)\\b"
+          "match": "\\b(Boolean|Bool|Number|String|List|Function|Inf|NaN|Empty)\\b"
+        }
+      ]
+    },
+    "error-types": {
+      "patterns": [
+        {
+          "name": "support.class.exception.bsharp",
+          "match": "\\b(B_SharpSyntaxError|RunTimeError|AssignmentError|ModificationError|ComparisonError|BSharpMathError|ShadowingError|Error)\\b"
         }
       ]
     },
     "constants": {
       "patterns": [
+        {
+          "name": "constant.language.numeric.bsharp",
+          "match": "\\b(inf|nan|Inf|NaN)\\b"
+        },
         {
           "name": "constant.language.boolean.bsharp",
           "match": "\\b(true|false)\\b"
@@ -90,7 +162,7 @@
         },
         {
           "name": "keyword.operator.arithmetic.bsharp",
-          "match": "\\+\\+|--|\\*\\*|//|\\+|\\-|\\*|/"
+          "match": "\\+\\+|--|\\*\\*|//|<<|>>>?|\\+|\\-|\\*|/|%"
         }
       ]
     },
@@ -107,6 +179,10 @@
         {
           "name": "punctuation.section.braces.bsharp",
           "match": "\\{|\\}"
+        },
+        {
+          "name": "punctuation.section.brackets.bsharp",
+          "match": "\\[|\\]"
         }
       ]
     },
@@ -124,7 +200,11 @@
       "patterns": [
         {
           "name": "constant.numeric.float.bsharp",
-          "match": "\\b[0-9]+\\.[0-9]+\\b"
+          "match": "\\b[0-9]+\\.[0-9]+([eE][+-]?[0-9]+)?\\b"
+        },
+        {
+          "name": "constant.numeric.float.bsharp",
+          "match": "\\b[0-9]+[eE][+-]?[0-9]+\\b"
         },
         {
           "name": "constant.numeric.integer.bsharp",

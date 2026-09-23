@@ -12,6 +12,7 @@ from B_Sharp.Errors.errors import *
 from B_Sharp.ASTNodes.instances import *
 from B_Sharp.ASTNodes.nodes import *
 from B_Sharp.builtins import BuiltinFunction, register_builtins
+from B_Sharp.CodeExecution.caller_macros import FileConfig, DEFAULT_CONFIG
 
 MAX_PARSE_DEPTH = 350
 _RECERSION_HEADROOM_LIMIT = 8000
@@ -75,8 +76,9 @@ class ParserResults:
 
 
 class Parser:
-    def __init__(self, tokens):
+    def __init__(self, tokens, file_config=None):
         self.tokens = tokens
+        self.file_config = file_config if file_config is not None else DEFAULT_CONFIG
         self.token_index = -1
         self.current_token = None
         self.depth = 0
@@ -591,14 +593,24 @@ class Parser:
                 return res.failure(err)
 
             if TYPE_MAP.get(type_tok.value) is None:
-                    return res.failure(
-                        B_SharpSyntaxError(
-                            type_tok.pos_start,
-                            type_tok.pos_end,
-                            "SYN018",
-                            {"type_name": type_tok.value},
-                        )
+                return res.failure(
+                    B_SharpSyntaxError(
+                        type_tok.pos_start,
+                        type_tok.pos_end,
+                        "SYN018",
+                        {"type_name": type_tok.value},
                     )
+                )
+
+        if self.file_config.enforce_types and type_tok is None:
+            return res.failure(
+                B_SharpSyntaxError(
+                    names[0].pos_start,
+                    names[0].pos_end,
+                    "SYN075",
+                    {"var_names": ", ".join(name.value for name in names)},
+                )
+            )
 
         value_node = None
         if self.current_token.type == TOKEN_EQUAL:
@@ -675,7 +687,7 @@ class Parser:
         else:
             list_of_elements.append(res.register(self.expression()))
             if res.error:
-                    return res.failure(
+                return res.failure(
                     B_SharpSyntaxError(
                         self.current_token.pos_start,
                         self.current_token.pos_end,
@@ -888,6 +900,17 @@ class Parser:
 
     def statement(self):
         res = ParserResults()
+
+        # Caller macros are stripped by the pre-pass; a macro token that
+        # reaches the parser was declared after code already started.
+        if self.current_token.type == TOKEN_MACRO:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN069",
+                )
+            )
 
         if self.current_token.matches(TOKEN_KEYWORD, "pass"):
             tok = self.current_token
@@ -1213,13 +1236,13 @@ class Parser:
             return res
         self._skip_newlines(res)
         if self.current_token.type != TOKEN_RPAREN:
-                return res.failure(
-                    B_SharpSyntaxError(
-                        self.current_token.pos_start,
-                        self.current_token.pos_end,
-                        "SYN045",
-                    )
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN045",
                 )
+            )
         rparen_end = self.current_token.pos_end.copy()
         res.register_forward()
         self.forward()
@@ -1630,7 +1653,10 @@ class Parser:
                         param_name.pos_start,
                         param_name.pos_end,
                         "SYN062",
-                        {"param_name": param_name.value, "func_name": var_name_tok.value},
+                        {
+                            "param_name": param_name.value,
+                            "func_name": var_name_tok.value,
+                        },
                     )
                 )
             seen_param_names.add(param_name.value)
@@ -1682,6 +1708,16 @@ class Parser:
                             )
                         )
 
+                if self.file_config.enforce_types and param_type is None:
+                    return res.failure(
+                        B_SharpSyntaxError(
+                            param_name.pos_start,
+                            param_name.pos_end,
+                            "SYN076",
+                            {"param": param_name.value, "func": var_name_tok.value},
+                        )
+                    )
+
                 arg_nodes.append((param_name, param_type))
                 if param_name.value in seen_param_names:
                     if param_name.value == var_name_tok.value:
@@ -1698,7 +1734,10 @@ class Parser:
                             param_name.pos_start,
                             param_name.pos_end,
                             "SYN062",
-                            {"param_name": param_name.value, "func_name": var_name_tok.value},
+                            {
+                                "param_name": param_name.value,
+                                "func_name": var_name_tok.value,
+                            },
                         )
                     )
                 seen_param_names.add(param_name.value)
@@ -1716,6 +1755,16 @@ class Parser:
 
             res.register_forward()
             self.forward()
+
+        if self.file_config.enforce_types and self.current_token.type != TOKEN_ARROW:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN077",
+                    {"func": var_name_tok.value},
+                )
+            )
 
         return_type_tok = None
         if self.current_token.type == TOKEN_ARROW:

@@ -52,6 +52,10 @@ TOKEN_COMMENT_MULTILINE = "START_COMMENT_MULTILINE"
 # Dot Notations
 TOKEN_DOT = "TOKEN_DOT"
 TOKEN_DOTDOT = "TOKEN_DOTDOT"
+# Bang Token
+TOKEN_BANG = "BANG"
+# Macros
+TOKEN_MACRO = "MACRO"
 
 # All Keywords
 KEYWORDS = [
@@ -87,9 +91,13 @@ KEYWORDS = [
     "String",
     "return",
     "struct",
+    "pragma",
     "continue",
     "function",
 ]
+
+# All Caller Macros Types
+possible_macros = ["pragma", "error", "panic", "allow", "remember"]
 
 # Colors
 RESET = "\033[0m"

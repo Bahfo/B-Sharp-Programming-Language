@@ -1,5 +1,13 @@
 from B_Sharp.ASTNodes.parser import *
 from B_Sharp.ASTNodes.parser import _with_recursion_headroom
+from B_Sharp.CodeExecution.caller_macros import (
+    get_config,
+    round_number,
+    round_result,
+    render_value,
+    preprocess_pragmas,
+)
+from B_Sharp.ASTNodes.instances import String
 
 
 class RunTimeResult:
@@ -53,6 +61,12 @@ class Interpreter:
         self.loaded_modules = {}
         self.loading_modules = set()
 
+    def _cfg(self, node):
+        """Per-file config for the module a node textually belongs to."""
+        if node is None or node.pos_start is None:
+            return DEFAULT_CONFIG
+        return get_config(node.pos_start.file_name)
+
     def _inside_function(self, context):
         current = context
         while current is not None:
@@ -93,10 +107,9 @@ class Interpreter:
     ################################################################
 
     def visit_NumberNode(self, node, context):
+        value = round_number(node.token.value, self._cfg(node))
         return RunTimeResult().success(
-            Number(node.token.value)
-            .set_context(context)
-            .set_pos(node.pos_start, node.pos_end)
+            Number(value).set_context(context).set_pos(node.pos_start, node.pos_end)
         )
 
     def visit_BooleanNode(self, node, context):
@@ -144,7 +157,17 @@ class Interpreter:
         if res.error:
             return res
 
+        node_cfg = self._cfg(node)
+
         if node.op_token.type == TOKEN_PLUS:
+            # Under a precision pragma, string concatenation keeps the
+            # per-file rendering of the number operand ("n=" + 3.14159 -> "n=3.14").
+            if (
+                node_cfg.precision is not None
+                and isinstance(left, String)
+                and isinstance(right, Number)
+            ):
+                right = String(render_value(right, node_cfg))
             result, error = left.addition(right)
         elif node.op_token.type == TOKEN_MINUS:
             result, error = left.subtraction(right)
@@ -183,6 +206,7 @@ class Interpreter:
         if error:
             return res.failure(error)
         else:
+            result = round_result(result, node_cfg)
             return res.success(result.set_pos(node.pos_start, node.pos_end))
 
     def visit_short_circuit(self, node, left, res, context):
@@ -246,6 +270,7 @@ class Interpreter:
 
         if error:
             return res.failure(error)
+        result = round_result(result, self._cfg(node))
         return res.success(result.set_pos(node.pos_start, node.pos_end))
 
     def visit_VariableAccessNode(self, node, context):
@@ -478,7 +503,9 @@ class Interpreter:
             )
 
         old_num = val.value
+        node_cfg = self._cfg(node)
         new_num = old_num + 1 if node.op_tok.type == TOKEN_INC else old_num - 1
+        new_num = round_number(new_num, node_cfg)
         new_val = (
             Number(new_num).set_context(context).set_pos(node.pos_start, node.pos_end)
         )
@@ -490,7 +517,7 @@ class Interpreter:
             return res.failure(assign_err)
 
         return res.success(
-            Number(old_num if node.is_postfix else new_num)
+            Number(round_number(old_num if node.is_postfix else new_num, node_cfg))
             .set_context(context)
             .set_pos(node.pos_start, node.pos_end)
         )
@@ -618,8 +645,10 @@ class Interpreter:
             parent_context=context,
         ).set_pos(node.pos_start, node.pos_end)
 
-        # F1: if promised return type, body must guarantee a `return <value>` on all paths
-        if func_value.return_type is not None:
+        # F1: if promised return type, body must guarantee a `return <value>` on
+        # all paths. `-> Empty` is a procedure: falling off the end is the
+        # intended completion, so no explicit return is demanded.
+        if func_value.return_type is not None and func_value.return_type is not Empty:
 
             def _always_returns(n):
                 if isinstance(n, ReturnNode):
@@ -1180,7 +1209,12 @@ class Interpreter:
             )
             return None
 
-        module_parser = Parser(tokens)
+        tokens, module_cfg, macro_error = preprocess_pragmas(tokens, file_path)
+        if macro_error:
+            res.failure(macro_error)
+            return None
+
+        module_parser = Parser(tokens, file_config=module_cfg)
         try:
             ast = module_parser.parser()
         except ParseDepthExceeded:

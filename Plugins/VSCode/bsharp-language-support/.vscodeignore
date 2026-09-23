@@ -1,4 +1,9 @@
 .vscode/**
 .vscode-test/**
 .gitignore
+node_modules/**
+**/*.map
+**/*.ts
+out/**
+*.vsix
 vsc-extension-quickstart.md
