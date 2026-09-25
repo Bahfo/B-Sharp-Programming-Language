@@ -8,3 +8,5 @@ Plugins/vscode/bsharp-language-support/package.json
 *.pyd
 /.ruff_cache
 Tests/
+/venv
+venv/

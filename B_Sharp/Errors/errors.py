@@ -1,19 +1,25 @@
+from typing import Any
+
+
 class Error:
     def __init__(self, pos_start, pos_end, error_code, context=None):
         self.pos_start = pos_start
         self.pos_end = pos_end
         self.error_code = error_code
         self.context = context or {}
-        
+
         # Load error info from catalog
         from B_Sharp.Errors.error_catalog import ERROR_CATALOG
+
         error_info = ERROR_CATALOG.get(error_code, {})
         self.error_name = error_info.get("name", "Unknown Error")
         self.hint = error_info.get("hint", "check the code at the indicated position")
-        
+
         # Format the message with context
         try:
-            self.details = error_info.get("message", "An error occurred").format(**self.context)
+            self.details = error_info.get("message", "An error occurred").format(
+                **self.context
+            )
         except (KeyError, IndexError, ValueError):
             self.details = error_info.get("message", "An error occurred")
 
@@ -129,13 +135,26 @@ class BSharpMathError(Error):
 
 class ShadowingError(Error):
     def __init__(self, pos_start, pos_end, param_name, func_name):
-        super().__init__(pos_start, pos_end, "SHD001", {
-            "param_name": param_name,
-            "func_name": func_name
-        })
+        super().__init__(
+            pos_start,
+            pos_end,
+            "SHD001",
+            {"param_name": param_name, "func_name": func_name},
+        )
 
     def __str__(self):
         return self.as_string()
+
+
+class SemanticError(Exception):
+    """
+    Raised when semantic checks fail during compilation.
+    """
+
+    def __init__(self, message: str, node: Any = None):
+        self.message = message
+        self.node = node
+        super().__init__(self.message)
 
 
 class Warning:
@@ -144,16 +163,19 @@ class Warning:
         self.pos_end = pos_end
         self.warning_code = warning_code
         self.context = context or {}
-        
+
         # Load warning info from catalog
         from B_Sharp.Errors.error_catalog import ERROR_CATALOG
+
         warning_info = ERROR_CATALOG.get(warning_code, {})
         self.warning_name = warning_info.get("name", "Unknown Warning")
         self.hint = warning_info.get("hint", "check the code at the indicated position")
-        
+
         # Format the message with context
         try:
-            self.details = warning_info.get("message", "A warning occurred").format(**self.context)
+            self.details = warning_info.get("message", "A warning occurred").format(
+                **self.context
+            )
         except (KeyError, IndexError, ValueError):
             self.details = warning_info.get("message", "A warning occurred")
 
@@ -197,7 +219,6 @@ class UnreachableCodeWarning(Warning):
 
 class PrecisionLossWarning(Warning):
     def __init__(self, pos_start, pos_end, base, exponent):
-        super().__init__(pos_start, pos_end, "WRN002", {
-            "base": base,
-            "exponent": exponent
-        })
+        super().__init__(
+            pos_start, pos_end, "WRN002", {"base": base, "exponent": exponent}
+        )
