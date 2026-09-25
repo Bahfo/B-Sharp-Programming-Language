@@ -43,12 +43,19 @@ typedef struct BSharpValue {
         bool boolean_val;
         double number_val;
         char* string_val;
+        BSharpArray* array_val;
         void* ptr_val;
         // ptr_val represents a polymorphic pointer for Arrays,
         // Objects, or Functions.
     } as;
     uint32_t ref_count;
 } BSharpValue;
+
+typedef struct BSharpArray {
+    struct BSharpValue* items;
+    size_t capacity;
+    size_t length;
+} BSharpArray;
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,32 +66,37 @@ BSharpValue bsharp_make_none(void);
 BSharpValue bsharp_make_bool(bool val);
 BSharpValue bsharp_make_number(double val);
 BSharpValue bsharp_make_string(const char* str);
+BSharpValue bsharp_make_array(size_t initial_cap);
 
-// Handling memory management in C too because the LLVM 
-// implementation is very hard by hand to implement. We seem to 
-// write it using manual garbage collection.
-
+// --- Memory Management ---
 void bsharp_retain(BSharpValue* val);
 void bsharp_release(BSharpValue val);
 
-// Dynamic Type Operators
-
+// --- Dynamic Operators ---
 BSharpValue bsharp_add(BSharpValue a, BSharpValue b);
 BSharpValue bsharp_sub(BSharpValue a, BSharpValue b);
 BSharpValue bsharp_mul(BSharpValue a, BSharpValue b);
 BSharpValue bsharp_div(BSharpValue a, BSharpValue b);
 
-// Logical Operations
-
+// --- Control Flow & Comparisons ---
 bool bsharp_is_truthy(BSharpValue val);
 BSharpValue bsharp_compare_eq(BSharpValue a, BSharpValue b);
 BSharpValue bsharp_compare_lt(BSharpValue a, BSharpValue b);
 BSharpValue bsharp_compare_gt(BSharpValue a, BSharpValue b);
 
-// Builtins
+// --- Collections & Builtins ---
+BSharpValue bsharp_array_push(BSharpValue arr, BSharpValue item);
+BSharpValue bsharp_array_get(BSharpValue arr, BSharpValue idx);
+BSharpValue bsharp_array_set(
+    BSharpValue arr, 
+    BSharpValue idx, 
+    BSharpValue val);
 
-void __bsharp_print_value(BSharpValue val, bool newline);
-void __bsharp_panic(const char* message);
+BSharpValue bsharp_builtin_write(BSharpValue val);
+BSharpValue bsharp_builtin_writeln(BSharpValue val);
+BSharpValue bsharp_builtin_len(BSharpValue val);
+
+void bsharp_panic(const char* message);
 
 #ifdef __cplusplus
 }
