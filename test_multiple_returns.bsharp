@@ -1,0 +1,12 @@
+// This code test multiple function returns
+
+fn return_two_numbers(x, y) -> Tuple(String, Number) {
+    return "hello", y
+}
+
+var x, y = return_two_numbers(3, 4)
+
+var z : Tuple(Number, Bool, Bool, Number) = (2, false, false, 2)
+
+__writeln(x)
+__writeln(y)

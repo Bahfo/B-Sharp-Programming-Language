@@ -1266,7 +1266,55 @@ class EmptyArray(Array):
 class Tuple(Value):
     """
     A complex datatype representing an immutable container of data.
+
+    Tuples are immutable containers of ordered values. Its size and
+    contents are fixed at creation: no operation grows, shrinks, or
+    rewrites it. The variable holding a tuple may still be reassingned
+    to a new tuple. Indices are Python-styled as well, where negative
+    values wrap from the end.
     """
+
+    def __init__(self, elements=None):
+        self.set_pos()
+        self.set_context()
+        self.elements = list(elements) if elements is not None else []
+
+    def get_at(self, index, pos_start=None, pos_end=None):
+        n = len(self.elements)
+        i = index
+
+        if i < 0:
+            i += n
+        if i < 0 or i >= n:
+            return None, RunTimeError(
+                pos_start or self.pos_start,
+                pos_end or self.pos_end,
+                "RUN011",
+            )
+        return self.elements[i], None
+
+    def is_equal(self, other):
+        if isinstance(other, Tuple):
+            if len(self.elements) != len(other.elements):
+                return Boolean(False), None
+            for a, b in zip(self.elements, other.elements):
+                res, error = a.is_equal(b)
+                if error or not res.value:
+                    return Boolean(False), None
+            return Boolean(True), None
+        return Boolean(False), None
+
+    def not_equal(self, other):
+        res, error = self.is_equal(other)
+        if error:
+            return res, error
+        return Boolean(not res.value), None
+
+    def copy(self):
+        return self
+
+    def __repr__(self):
+        return "(" + ", ".join(repr(e) for e in self.elements) + ")"
 
 
 class ErrorInstance(Value):
@@ -1357,10 +1405,10 @@ class BodyScopeContext(Context):
         )
         self._write_to = write_to
 
-    def define(self, name, data_type, value, is_const=False):
+    def define(self, name, data_type, value, is_const=False, type_spelling=None):
         return self._write_to.variables.set_pos(
             self.variables.pos_start, self.variables.pos_end
-        ).define(name, data_type, value, is_const)
+        ).define(name, data_type, value, is_const, type_spelling)
 
 
 class EnvironmentVariable:
@@ -1397,7 +1445,7 @@ class EnvironmentVariable:
         self.pos_end = pos_end
         return self
 
-    def define(self, name, data_type, value, is_const=False):
+    def define(self, name, data_type, value, is_const=False, type_spelling=None):
         """Declares a new variable in current environment scope."""
 
         if name in self.variables:
@@ -1411,6 +1459,20 @@ class EnvironmentVariable:
         type_error = self._type_mismatch_error(data_type, value)
         if type_error:
             return None, type_error
+
+        if type_spelling and type_spelling.startswith("Tuple("):
+            value, coerce_err = coerce_tuple_elements(value, type_spelling)
+            if coerce_err:
+                return None, coerce_err
+            spec, _ = parse_tuple_type(type_spelling)
+            reason = tuple_violation(spec, value)
+            if reason:
+                return None, AssignmentError(
+                    self.pos_start,
+                    self.pos_end,
+                    "ASN006",
+                    {"expected": type_spelling, "reason": reason},
+                )
 
         if is_const and isinstance(value, (List, Array)):
 
@@ -1449,6 +1511,7 @@ class EnvironmentVariable:
 
         self.variables[name] = {
             "type": data_type,
+            "type_spelling": type_spelling,
             "value": value,
             "is_const": is_const,
         }
@@ -1483,6 +1546,21 @@ class EnvironmentVariable:
         type_error = self._type_mismatch_error(entry["type"], value, pos_start, pos_end)
         if type_error:
             return None, type_error
+
+        spelling = entry.get("type_spelling")
+        if spelling and spelling.startswith("Tuple("):
+            value, coerce_err = coerce_tuple_elements(value, spelling)
+            if coerce_err:
+                return None, coerce_err
+            spec, _ = parse_tuple_type(spelling)
+            reason = tuple_violation(spec, value)
+            if reason:
+                return None, AssignmentError(
+                    pos_start,
+                    pos_end,
+                    "ASN006",
+                    {"expected": spelling, "reason": reason},
+                )
 
         entry["value"] = value
         return value, None
@@ -1614,9 +1692,7 @@ class Function(Value):
             if isinstance(arg_value, (List, Array)):
                 arg_value = arg_value.copy()
 
-            param_type = (
-                resolve_type(param_type_tok.value) if param_type_tok else None
-            )
+            param_type = resolve_type(param_type_tok.value) if param_type_tok else None
 
             if (
                 param_type
@@ -1645,6 +1721,7 @@ class Function(Value):
                 name=param_name_tok.value,
                 data_type=param_type,
                 value=arg_value,
+                type_spelling=param_type_tok.value if param_type_tok else None,
             )
             if err:
                 return res.failure(err)
@@ -1690,6 +1767,35 @@ class Function(Value):
                         },
                     )
                 )
+
+            # Tuple(...) annotations constrain length and element types
+            spelling = (
+                self.return_type_tok.value if self.return_type_tok else None
+            )
+            if spelling and spelling.startswith("Tuple("):
+                return_val, coerce_err = coerce_tuple_elements(
+                    return_val, spelling
+                )
+                if coerce_err:
+                    return res.failure(coerce_err)
+                spec, _ = parse_tuple_type(spelling)
+                reason = tuple_violation(spec, return_val)
+                if reason:
+                    return res.failure(
+                        RunTimeError(
+                            err_pos_start,
+                            err_pos_end,
+                            "RUN123",
+                            {
+                                "func_name": self.name,
+                                "actual_type": (
+                                    f"Tuple with {len(return_val.elements)} "
+                                    "element(s)"
+                                ),
+                                "expected_type": spelling,
+                            },
+                        )
+                    )
 
         return res.success(return_val)
 
@@ -1780,6 +1886,7 @@ TYPE_MAP = {
     "Bool[]": BooleanArray,
     "Empty[]": EmptyArray,
     "StructDefinition": StructDefinition,
+    "Tuple": Tuple,
 }
 
 _ARRAY_TYPE_RE = re.compile(r"^(?P<base>[A-Za-z_][A-Za-z0-9_]*)(?:\[\])+$")
@@ -1791,13 +1898,19 @@ def resolve_type(name):
     Exact TYPE_MAP spellings win; otherwise a base name followed by one
     or more `[]` suffixes resolves to the base array class, e.g.
     `Number[][]` -> NumberArray, `Bool[][]` -> BooleanArray.
-    Unknown names return None.
+    Tuple spellings (`Tuple`, `Tuple()`, `Tuple(Number)`,
+    `Tuple(4 : Number)`, `Tuple(Number, String)`,
+    `Tuple(2 : Number, 3 : String)`) resolve to Tuple.
+    Unknown or malformed names return None.
     """
     if not name:
         return None
     cls = TYPE_MAP.get(name)
     if cls is not None:
         return cls
+    if name.startswith("Tuple("):
+        spec, _ = parse_tuple_type(name)
+        return Tuple if spec is not None else None
     match = _ARRAY_TYPE_RE.match(name)
     if match:
         return TYPE_MAP.get(match.group("base") + "[]")
@@ -1812,6 +1925,178 @@ def array_depth(name):
     if not match:
         return 0
     return (len(name) - len(match.group("base"))) // 2
+
+
+class TupleTypeSpec:
+    """Parsed constraint behind a Tuple annotation spelling.
+
+    kind is one of:
+      "any"      -> bare `Tuple` (no constraint)
+      "empty"    -> `Tuple()` (exactly zero elements)
+      "hom"      -> `Tuple(T)` (any length, every element is T)
+      "sequence" -> `Tuple(N1 : T1, T2, N2 : T3, ...)`; exact arity is the
+                    sum of the per-slot counts, types are positional.
+                    An uncounted slot counts as exactly one element.
+
+    For "hom" and "sequence", slots is a list of (count, type_spelling)
+    pairs; count is an int, or None for "hom" (unbounded length).
+    """
+
+    def __init__(self, kind, slots=None, spelling=None):
+        self.kind = kind
+        self.slots = slots or []
+        self.spelling = spelling
+
+    def expected_types(self, n):
+        """Flat list of `n` expected element type spellings for a value with
+        `n` elements, or None when `n` itself violates the spec's arity."""
+        if self.kind == "hom":
+            return [self.slots[0][1]] * n
+        flat = []
+        total = 0
+        for count, type_spelling in self.slots:
+            reps = 1 if count is None else count
+            total += reps
+            flat.extend([type_spelling] * reps)
+        return flat if n == total else None
+
+
+def _split_top_level(inner):
+    """Splits on commas that are not nested inside parentheses."""
+    parts, depth, cur = [], 0, []
+    for ch in inner:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append("".join(cur).strip())
+            cur = []
+        else:
+            cur.append(ch)
+    parts.append("".join(cur).strip())
+    return parts
+
+
+def parse_tuple_type(name):
+    """Parses a Tuple annotation spelling into a TupleTypeSpec.
+
+    Accepted forms:
+      Tuple                          -> any elements
+      Tuple()                        -> exactly the empty tuple
+      Tuple(T)                       -> any length, every element is T
+      Tuple(4 : Number)              -> exactly 4 Numbers
+      Tuple(Number, String)          -> exactly 2, positional
+      Tuple(2 : Number, 3 : String)  -> 2 Numbers, then 3 Strings
+
+    Returns (spec, None) on success, (None, reason) when `name` looks like
+    a Tuple(...) annotation but is malformed, and (None, None) when `name`
+    is not a tuple annotation at all.
+    """
+    if not isinstance(name, str) or not name.startswith("Tuple"):
+        return None, None
+    if name == "Tuple":
+        return TupleTypeSpec("any", spelling=name), None
+    if not name.startswith("Tuple(") or not name.endswith(")"):
+        return None, "expected '(' after 'Tuple'"
+    inner = name[len("Tuple(") : -1].strip()
+    if not inner:
+        return TupleTypeSpec("empty", spelling=name), None
+
+    parsed = []
+    for slot in _split_top_level(inner):
+        if not slot:
+            return None, "empty type in parameter list"
+        match = re.match(r"^(\d+)\s*:\s*(.+)$", slot, re.DOTALL)
+        if match:
+            count = int(match.group(1))
+            slot_type = match.group(2).strip()
+        else:
+            count = None
+            slot_type = slot
+        if resolve_type(slot_type) is None:
+            return None, f"unknown element type '{slot_type}'"
+        parsed.append((count, slot_type))
+
+    if len(parsed) == 1 and parsed[0][0] is None:
+        return TupleTypeSpec("hom", slots=parsed, spelling=name), None
+    return TupleTypeSpec("sequence", slots=parsed, spelling=name), None
+
+
+def tuple_violation(spec, value):
+    """Returns None when `value` satisfies `spec`, else a short reason string."""
+    if spec is None or spec.kind == "any":
+        return None
+    if not isinstance(value, Tuple):
+        return f"expected a tuple, got {type(value).__name__}"
+    n = len(value.elements)
+
+    if spec.kind == "empty":
+        return None if n == 0 else f"expected 0 elements, got {n}"
+
+    slots = spec.expected_types(n)
+    if slots is None:
+        expected = sum(1 if count is None else count for count, _ in spec.slots)
+        return f"expected {expected} elements, got {n}"
+
+    for i, (element, slot) in enumerate(zip(value.elements, slots)):
+        if slot.startswith("Tuple("):
+            # Nested tuple annotation: recurse with the inner spec so its
+            # own length/element constraints are enforced too.
+            nested_spec, _ = parse_tuple_type(slot)
+            nested_reason = tuple_violation(nested_spec, element)
+            if nested_reason:
+                return f"element {i}: {nested_reason}"
+            continue
+        cls = resolve_type(slot)
+        if cls is None or not isinstance(element, cls):
+            return f"element {i} must be {slot}, got {type(element).__name__}"
+    return None
+
+
+def coerce_tuple_elements(value, spelling):
+    """Wraps plain List elements into typed arrays when the tuple annotation
+    declares array slots (e.g. `Tuple(Number[]) = ([1], [2])`), mirroring how
+    `var x : Number[] = [1, 2]` coerces its list literal.
+
+    Returns (value, error).
+    """
+    if not isinstance(value, Tuple) or not spelling:
+        return value, None
+    if not spelling.startswith("Tuple("):
+        return value, None
+
+    spec, _ = parse_tuple_type(spelling)
+    if spec is None or spec.kind in ("any", "empty"):
+        return value, None
+
+    slots = spec.expected_types(len(value.elements))
+    if slots is None:
+        return value, None  # length violation is reported by tuple_violation
+
+    for i, (element, slot) in enumerate(zip(value.elements, slots)):
+        if slot.startswith("Tuple("):
+            # Nested tuple annotation: recurse into the element
+            nested, nested_err = coerce_tuple_elements(element, slot)
+            if nested_err:
+                return value, nested_err
+            value.elements[i] = nested
+            continue
+        cls = resolve_type(slot)
+        if cls is None or not issubclass(cls, Array):
+            continue
+        if not isinstance(element, List) or isinstance(element, Array):
+            continue
+        arr = cls(element.list_of_elements, depth=max(1, array_depth(slot)))
+        arr.type_name = slot
+        arr.set_pos(element.pos_start, element.pos_end)
+        arr.set_context(element.context)
+        err = arr._validate_all()
+        if err:
+            return value, err
+        value.elements[i] = arr
+    return value, None
+
 
 ERROR_TYPE_MAP = {
     "Error": Error,
@@ -1857,6 +2142,10 @@ def _default_for_type(
         return _set(NaN())
     if data_type_class is List:
         return _set(List([]))
+    if data_type_class is Tuple:
+        # Empty tuple default (mirrors `var x : List;` -> []).
+        # Count/positional annotations fail ASN006 at declaration instead.
+        return _set(Tuple())
 
     if issubclass(data_type_class, Array):
         try:

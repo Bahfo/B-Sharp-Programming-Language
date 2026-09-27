@@ -207,15 +207,19 @@ def round_number(raw, cfg):
 
 
 def round_result(value, cfg):
-    """Round a runtime value tree (Number / List / Array) in place."""
+    """Round a runtime value tree (Number / List / Array / Tuple) in place."""
     if cfg.precision is None:
         return value
 
-    from B_Sharp.ASTNodes.instances import Number, List, Array
+    from B_Sharp.ASTNodes.instances import Number, List, Array, Tuple
 
     if isinstance(value, Number):
         if type(value.value) is float:
             value.value = round(value.value, cfg.precision)
+        return value
+    if isinstance(value, Tuple):
+        for idx, element in enumerate(value.elements):
+            value.elements[idx] = round_result(element, cfg)
         return value
     if isinstance(value, (List, Array)):
         for idx, element in enumerate(value.list_of_elements):
@@ -225,8 +229,11 @@ def round_result(value, cfg):
 
 def render_element(value, cfg):
     """Render one element the way it appears nested inside a list/array."""
-    from B_Sharp.ASTNodes.instances import Number, List, Array
+    from B_Sharp.ASTNodes.instances import Number, List, Array, Tuple
 
+    if isinstance(value, Tuple):
+        inner = ", ".join(render_element(e, cfg) for e in value.elements)
+        return f"({inner})"
     if isinstance(value, (List, Array)):
         inner = ", ".join(render_element(e, cfg) for e in value.list_of_elements)
         return f"[{inner}]"
@@ -251,6 +258,7 @@ def render_value(value, cfg):
         Array,
         String,
         Number,
+        Tuple,
         ErrorInstance,
     )
 
@@ -272,4 +280,9 @@ def render_value(value, cfg):
             return str(value)
         inner = ", ".join(render_element(e, cfg) for e in value.list_of_elements)
         return f"[{inner}]"
+    if isinstance(value, Tuple):
+        if cfg.precision is None:
+            return str(value)
+        inner = ", ".join(render_element(e, cfg) for e in value.elements)
+        return f"({inner})"
     return str(value)

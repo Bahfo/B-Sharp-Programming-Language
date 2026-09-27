@@ -139,6 +139,25 @@ class Interpreter:
             .set_pos(node.pos_start, node.pos_end)
         )
 
+    def visit_TupleNode(self, node, context):
+        res = RunTimeResult()
+        elements = []
+
+        for element_node in node.tuple_of_expressions:
+            value = res.register(self.visit(element_node, context))
+            if res.error:
+                return res
+            # Full isolation: snapshot mutable List/Array elements (Fix 3 rule)
+            if isinstance(value, (List, Array)):
+                value = value.copy()
+            elements.append(value)
+
+        return res.success(
+            Tuple(elements)
+            .set_context(context)
+            .set_pos(node.pos_start, node.pos_end)
+        )
+
     def visit_BinaryOpNode(self, node, context):
         res = RunTimeResult()
         left = res.register(self.visit(node.left_node, context))
@@ -330,6 +349,7 @@ class Interpreter:
             data_type=data_type_class,
             value=value,
             is_const=node.is_const,
+            type_spelling=data_type_name,
         )
 
         if error:
@@ -372,6 +392,44 @@ class Interpreter:
             if err:
                 return res.failure(err)
 
+        # Destructuring: `var a, b = f()` / `var a, b = (1, 2)` unpacks a
+        # tuple RHS. A Tuple *annotation* (`var a, b : Tuple = t`) opts out
+        # and binds the whole tuple to each name (legacy same-value path).
+        unpack = isinstance(value, Tuple) and not (
+            data_type_class is not None and issubclass(data_type_class, Tuple)
+        )
+        if unpack:
+            if len(node.names) != len(value.elements):
+                return res.failure(
+                    AssignmentError(
+                        node.pos_start,
+                        node.pos_end,
+                        "ASN007",
+                        {
+                            "expected": len(node.names),
+                            "actual": len(value.elements),
+                        },
+                    )
+                )
+            last_val = None
+            for idx, name_tok in enumerate(node.names):
+                element = value.elements[idx]
+                if isinstance(element, (List, Array)):
+                    element = element.copy()
+                val, error = context.variables.set_pos(
+                    name_tok.pos_start, name_tok.pos_end
+                ).define(
+                    name=name_tok.value,
+                    data_type=data_type_class,
+                    value=element,
+                    is_const=node.is_const,
+                    type_spelling=data_type_name,
+                )
+                if error:
+                    return res.failure(error)
+                last_val = val
+            return res.success(last_val)
+
         last_val = value
         for name_tok in node.names:
             var_name = name_tok.value
@@ -383,6 +441,7 @@ class Interpreter:
                 data_type=data_type_class,
                 value=assigned_value,
                 is_const=node.is_const,
+                type_spelling=data_type_name,
             )
             if error:
                 return res.failure(error)
@@ -909,12 +968,15 @@ class Interpreter:
             )
 
         # Unified size API: both .length and .size work on every
-        # sized builtin type (String, List, Array).
-        sized_types = (List, Array, String)
+        # sized builtin type (String, List, Array, Tuple).
+        sized_types = (List, Array, String, Tuple)
         if isinstance(obj, sized_types) and _property in ("length", "size"):
-            size = (
-                len(obj.value) if isinstance(obj, String) else len(obj.list_of_elements)
-            )
+            if isinstance(obj, String):
+                size = len(obj.value)
+            elif isinstance(obj, Tuple):
+                size = len(obj.elements)
+            else:
+                size = len(obj.list_of_elements)
             return res.success(Number(size).set_context(context).set_pos(*pos))
 
         if isinstance(obj, StructInstance):
@@ -941,6 +1003,8 @@ class Interpreter:
             type_name = "Empty[]"
         elif isinstance(obj, Array):
             type_name = "Array"
+        elif isinstance(obj, Tuple):
+            type_name = "Tuple"
         elif isinstance(obj, List):
             type_name = "List"
         elif isinstance(obj, String):
@@ -982,6 +1046,17 @@ class Interpreter:
         index = res.register(self.visit(node.index_node, context))
         if res.error:
             return res
+
+        if isinstance(obj, Tuple):
+            i, err = self._require_int(index, node)
+            if err:
+                return res.failure(err)
+            element, err = obj.get_at(i, node.pos_start, node.pos_end)
+            if err:
+                return res.failure(err)
+            return res.success(
+                element.set_context(context).set_pos(node.pos_start, node.pos_end)
+            )
 
         if isinstance(obj, (List, Array)):
             i, err = self._require_int(index, node)
@@ -1073,6 +1148,11 @@ class Interpreter:
         if res.error:
             return res
 
+        if isinstance(container, Tuple):
+            return res.failure(
+                RunTimeError(node.pos_start, node.pos_end, "RUN139")
+            )
+
         if isinstance(container, (List, Array)):
             i, err = self._require_int(index_val, node)
             if err:
@@ -1109,6 +1189,11 @@ class Interpreter:
         non-indexable slots fail with RUN013/RUN014. Reads never vivify.
         """
         res = RunTimeResult()
+
+        if isinstance(container, Tuple):
+            return res.failure(
+                RunTimeError(idx_node.pos_start, idx_node.pos_end, "RUN139")
+            )
 
         if isinstance(container, (List, Array)):
             i, err = self._require_int(idx_val, idx_node)
@@ -1209,6 +1294,17 @@ class Interpreter:
         obj = res.register(self.visit(node.node, context))
         if res.error:
             return res
+
+        if isinstance(obj, Tuple):
+            length = len(obj.elements)
+            start, end = self._resolve_slice_bounds(node, context, res, length)
+            if res.error:
+                return res
+            return res.success(
+                Tuple(obj.elements[start:end])
+                .set_context(context)
+                .set_pos(node.pos_start, node.pos_end)
+            )
 
         if isinstance(obj, (List, Array)):
             length = len(obj.list_of_elements)
@@ -1454,6 +1550,11 @@ class Interpreter:
             if res.error:
                 return res
             args.append(arg_val)
+
+        if isinstance(obj, Tuple):
+            return res.failure(
+                RunTimeError(node.pos_start, node.pos_end, "RUN139")
+            )
 
         if not isinstance(obj, (List, Array)):
             return res.failure(

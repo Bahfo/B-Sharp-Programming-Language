@@ -448,6 +448,12 @@ ERROR_CATALOG = {
         "message": "Unknown pragma directive '{name}'.",
         "hint": "Known directives: 'enforce', 'precision'",
     },
+    # ==================== TUPLE TYPE ERRORS ====================
+    "SYN081": {
+        "name": "Syntax Error",
+        "message": "Malformed tuple type annotation: {reason}",
+        "hint": "Valid forms: Tuple, Tuple(), Tuple(Number), Tuple(4 : Number), Tuple(Number, String), Tuple(2 : Number, 3 : String)",
+    },
     # ==================== RUNTIME ERRORS ====================
     # Visitor/Operator Errors
     "RUN001": {
@@ -790,6 +796,12 @@ ERROR_CATALOG = {
         "message": "'time' function requires no arguments",
         "hint": "Call time() without arguments",
     },
+    # Tuple Immutability Errors
+    "RUN139": {
+        "name": "RunTime Error",
+        "message": "Cannot modify a tuple (tuples are immutable)",
+        "hint": "Reassign the whole variable with a new tuple instead of editing elements",
+    },
     # ==================== ASSIGNMENT ERRORS ====================
     "ASN001": {
         "name": "Uncaught Assignment Error",
@@ -815,6 +827,16 @@ ERROR_CATALOG = {
         "name": "Uncaught Assignment Error",
         "message": "Cannot assign value of type {actual_type} to a variable declared with {expected_type}",
         "hint": "Ensure the value type matches the variable declaration",
+    },
+    "ASN006": {
+        "name": "Uncaught Assignment Error",
+        "message": "Tuple value does not match annotation {expected}: {reason}",
+        "hint": "Provide a tuple with the required length and element types",
+    },
+    "ASN007": {
+        "name": "Uncaught Assignment Error",
+        "message": "Cannot unpack a tuple of {actual} element(s) into {expected} variable(s)",
+        "hint": "Declare the same number of variables as there are tuple elements",
     },
     # ==================== MODIFICATION ERRORS ====================
     "MOD001": {

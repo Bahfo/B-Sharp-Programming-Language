@@ -133,6 +133,18 @@ class ListNode:
         return f"{self.list_of_expressions}"
 
 
+class TupleNode:
+    """Node for a tuple literal `(a, b, c)`."""
+
+    def __init__(self, tuple_of_expressions, pos_start, pos_end):
+        self.tuple_of_expressions = tuple_of_expressions
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+    def __repr__(self):
+        return f"Tuple ({self.tuple_of_expressions})"
+
+
 class IfNode:
     def __init__(self, cases, else_case):
         self.cases = cases

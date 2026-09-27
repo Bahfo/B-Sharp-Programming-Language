@@ -19,9 +19,12 @@ _RECERSION_HEADROOM_LIMIT = 8000
 
 _VALID_TYPES_MESSAGE = (
     "Valid types (uppercase required): "
-    "Bool, Number, String, Empty, List, Inf, NaN, Function, "
+    "Bool, Number, String, Empty, List, Inf, NaN, Function, Tuple, "
     "Number[], String[], Boolean[], Empty[]. "
-    "The [] suffix may be repeated for nesting, e.g. Number[][]."
+    "The [] suffix may be repeated for nesting, e.g. Number[][]. "
+    "Tuple annotations: Tuple, Tuple(), Tuple(Number), "
+    "Tuple(4 : Number), Tuple(Number, String), "
+    "Tuple(2 : Number, 3 : String)."
 )
 
 
@@ -156,17 +159,55 @@ class Parser:
             return res.success(StringNode(tok))
 
         elif tok.type == TOKEN_LPAREN:
+            pos_start = tok.pos_start.copy()
             res.register_forward()
             self.forward()
             self._skip_newlines(res)
-            expr = res.register(self.expression())
+
+            # () is the empty tuple
+            if self.current_token.type == TOKEN_RPAREN:
+                pos_end = self.current_token.pos_end.copy()
+                res.register_forward()
+                self.forward()
+                return res.success(TupleNode([], pos_start, pos_end))
+
+            first = res.register(self.expression())
             if res.error:
                 return res
             self._skip_newlines(res)
+
+            # (a, b, ...) is a tuple literal; (a) stays a grouping
+            if self.current_token.type == TOKEN_COMMA:
+                elements = [first]
+                while self.current_token.type == TOKEN_COMMA:
+                    res.register_forward()
+                    self.forward()
+                    self._skip_newlines(res)
+                    if self.current_token.type == TOKEN_RPAREN:
+                        break  # trailing comma: (1,) is a 1-tuple
+                    element = res.register(self.expression())
+                    if res.error:
+                        return res
+                    elements.append(element)
+                    self._skip_newlines(res)
+
+                if self.current_token.type != TOKEN_RPAREN:
+                    return res.failure(
+                        B_SharpSyntaxError(
+                            self.current_token.pos_start,
+                            self.current_token.pos_end,
+                            "SYN006",
+                        )
+                    )
+                pos_end = self.current_token.pos_end.copy()
+                res.register_forward()
+                self.forward()
+                return res.success(TupleNode(elements, pos_start, pos_end))
+
             if self.current_token.type == TOKEN_RPAREN:
                 res.register_forward()
                 self.forward()
-                return res.success(expr)
+                return res.success(first)
             return res.failure(
                 B_SharpSyntaxError(
                     self.current_token.pos_start,
@@ -518,6 +559,105 @@ class Parser:
     # Variable Parsing Rules
     ################################################################
 
+    def _parse_type_after_base(self, type_tok):
+        """Finishes a type annotation whose base token was already consumed:
+        optional Tuple(...) parameter list, then any [] suffixes.
+        Returns (type_tok, error)."""
+        if type_tok.value == "Tuple" and self.current_token.type == TOKEN_LPAREN:
+            type_tok, err = self._parse_tuple_params(type_tok)
+            if err:
+                return None, err
+        return self._parse_array_suffix(type_tok)
+
+    def _read_slot_type(self):
+        """Reads one complete type inside Tuple(...) parameters."""
+        if self.current_token.type not in (TOKEN_KEYWORD, TOKEN_IDENTIFIER):
+            return None, B_SharpSyntaxError(
+                self.current_token.pos_start,
+                self.current_token.pos_end,
+                "SYN081",
+                {"reason": "expected a type name inside 'Tuple(...)'"},
+            )
+        tok = self.current_token
+        res = ParserResults()
+        res.register_forward()
+        self.forward()
+        return self._parse_type_after_base(tok)
+
+    def _parse_tuple_params(self, type_tok):
+        """Parses `(...)` after a `Tuple` type token.
+
+        Supported forms: Tuple(), Tuple(T), Tuple(N : T), Tuple(T1, T2, ...),
+        and any mix of counted/uncounted slots such as
+        Tuple(2 : Number, 3 : String).
+        On success mutates type_tok.value to the full spelling and returns
+        (type_tok, None). The current token must be '('.
+        """
+        throwaway = ParserResults()
+        self.forward()  # consume '('
+        self._skip_newlines(throwaway)
+
+        if self.current_token.type == TOKEN_RPAREN:
+            pos_end = self.current_token.pos_end
+            self.forward()
+            type_tok.value = "Tuple()"
+            type_tok.pos_end = pos_end
+            return type_tok, None
+
+        slots = []
+        while True:
+            if self.current_token.type == TOKEN_INT:
+                count_tok = self.current_token
+                self.forward()
+                if self.current_token.type != TOKEN_COLON:
+                    return None, B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "SYN081",
+                        {
+                            "reason": "expected ':' after the element count, "
+                            "e.g. '4 : Number'"
+                        },
+                    )
+                self.forward()
+                slot_tok, err = self._read_slot_type()
+                if err:
+                    return None, err
+                slots.append(f"{count_tok.value} : {slot_tok.value}")
+            else:
+                slot_tok, err = self._read_slot_type()
+                if err:
+                    return None, err
+                slots.append(slot_tok.value)
+            self._skip_newlines(throwaway)
+            if self.current_token.type == TOKEN_COMMA:
+                self.forward()
+                self._skip_newlines(throwaway)
+                if self.current_token.type == TOKEN_RPAREN:
+                    break  # trailing comma tolerated
+                continue
+            break
+        if self.current_token.type != TOKEN_RPAREN:
+            return None, B_SharpSyntaxError(
+                self.current_token.pos_start,
+                self.current_token.pos_end,
+                "SYN081",
+                {"reason": "expected ')' after tuple parameters"},
+            )
+        pos_end = self.current_token.pos_end
+        self.forward()
+        type_tok.value = "Tuple(" + ", ".join(slots) + ")"
+        type_tok.pos_end = pos_end
+        spec, reason = parse_tuple_type(type_tok.value)
+        if spec is None:
+            return None, B_SharpSyntaxError(
+                type_tok.pos_start,
+                type_tok.pos_end,
+                "SYN081",
+                {"reason": reason},
+            )
+        return type_tok, None
+
     def _parse_array_suffix(self, type_tok):
         """Consumes any number of `[]` suffixes after a type token.
 
@@ -594,7 +734,7 @@ class Parser:
                     )
                 )
 
-            type_tok, err = self._parse_array_suffix(type_tok)
+            type_tok, err = self._parse_type_after_base(type_tok)
             if err:
                 return res.failure(err)
 
@@ -1623,7 +1763,7 @@ class Parser:
                     param_type = self.current_token
                     res.register_forward()
                     self.forward()
-                    param_type, err = self._parse_array_suffix(param_type)
+                    param_type, err = self._parse_type_after_base(param_type)
                     if err:
                         return res.failure(err)
                     if resolve_type(param_type.value) is None:
@@ -1694,7 +1834,7 @@ class Parser:
                         param_type = self.current_token
                         res.register_forward()
                         self.forward()
-                        param_type, err = self._parse_array_suffix(param_type)
+                        param_type, err = self._parse_type_after_base(param_type)
                         if err:
                             return res.failure(err)
                         if resolve_type(param_type.value) is None:
@@ -1782,7 +1922,7 @@ class Parser:
                 return_type_tok = self.current_token
                 res.register_forward()
                 self.forward()
-                return_type_tok, err = self._parse_array_suffix(return_type_tok)
+                return_type_tok, err = self._parse_type_after_base(return_type_tok)
                 if err:
                     return res.failure(err)
                 if resolve_type(return_type_tok.value) is None:
@@ -1846,11 +1986,35 @@ class Parser:
         ):
             return res.success(ReturnNode(None, start_pos, end_pos))
 
-        expr = res.register(self.expression())
+        first = res.register(self.expression())
         if res.error:
             return res
 
-        return res.success(ReturnNode(expr, start_pos, expr.pos_end))
+        # `return a, b` yields a tuple; `return a` stays a plain value.
+        # The bare comma form is single-line only: after a comma the next
+        # token must be an expression or the statement terminator
+        # (trailing comma `return x,` -> 1-tuple). Multiline tuples
+        # use parentheses: `return (a,\n b)`.
+        if self.current_token.type == TOKEN_COMMA:
+            elements = [first]
+            while self.current_token.type == TOKEN_COMMA:
+                res.register_forward()
+                self.forward()
+                if self.current_token.type in (
+                    TOKEN_NEWLINE,
+                    TOKEN_SEMICOLON,
+                    TOKEN_RCURLY,
+                    TOKEN_EOF,
+                ):
+                    break
+                element = res.register(self.expression())
+                if res.error:
+                    return res
+                elements.append(element)
+            tuple_node = TupleNode(elements, start_pos, elements[-1].pos_end)
+            return res.success(ReturnNode(tuple_node, start_pos, tuple_node.pos_end))
+
+        return res.success(ReturnNode(first, start_pos, first.pos_end))
 
     def struct_def(self):
         res = ParserResults()
