@@ -278,6 +278,11 @@ class Lexer:
                 tokens.append(Token(TOKEN_RCURLY, pos_start=self.pos))
                 self.forward()
             elif self.current_char == ".":
+                if self.peek(2) == "..":
+                    tokens.append(Token(TOKEN_ELLIPSIS, pos_start=self.pos))
+                    self.forward()
+                    self.forward()
+                    self.forward()
                 if self.peek() == ".":
                     tokens.append(Token(TOKEN_DOTDOT, pos_start=self.pos))
                     self.forward()

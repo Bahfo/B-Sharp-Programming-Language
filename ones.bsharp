@@ -1,0 +1,10 @@
+function ones(x: Number, y: Number) {
+    var mat: Number[][];
+    for (var i = 0; i < x; i++) {
+        for (var j = 0; j < y; j++) {
+            mat[i][j] = 1
+        }
+    }
+    return mat;
+}
+__writeln(ones(3,3));

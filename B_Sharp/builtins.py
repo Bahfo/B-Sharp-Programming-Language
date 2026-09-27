@@ -221,18 +221,18 @@ def _time_(args, context, call_node):
 
 
 BUILTIN_FUNCTIONS = {
-    "write": _write,
-    "writeln": _writeln,
-    "format": _format,
-    "read": _read,
-    "readln": _readln,
-    "is_String": _is_string,
-    "is_Number": _is_number,
-    "is_Empty": _is_empty,
-    "is_Bool": _is_bool,
-    "to_Number": _to_number,
-    "to_String": _to_string,
-    "time": _time_,
+    "__write": _write,
+    "__writeln": _writeln,
+    "__format": _format,
+    "__read": _read,
+    "__readln": _readln,
+    "__is_String": _is_string,
+    "__is_Number": _is_number,
+    "__is_Empty": _is_empty,
+    "__is_Bool": _is_bool,
+    "__to_Number": _to_number,
+    "__to_String": _to_string,
+    "__time__": _time_,
 }
 
 

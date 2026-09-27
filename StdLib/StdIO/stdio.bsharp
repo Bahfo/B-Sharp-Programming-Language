@@ -1,2 +1,11 @@
 // (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved.
 // Standard Input Output Module for B-Sharp Programming Language
+
+function print(argv : List) {
+    for (var i = 0; i < argv.length; i++) {
+        if (i == argv.length - 1) {
+            __writeln(argv[argv.length - 1]);
+        }
+        __write(argv[i]);
+    }
+}

@@ -8,6 +8,7 @@
 from B_Sharp.Errors.errors import *
 
 import math
+import re
 import sys
 
 
@@ -927,10 +928,18 @@ class List(Value):
 
 
 class Array(List):
-    """Typed array: element type enforced on every mutation."""
+    """Typed array: element type enforced on every mutation.
 
-    def __init__(self, element_type_class, list_of_elements=None):
+    `depth` records how many `[]` levels the annotation declared:
+    depth 1 = flat (elements are scalars), depth >= 2 = nested, where
+    elements are typed arrays of depth-1. Shape is enforced strictly.
+    """
+
+    def __init__(self, element_type_class, list_of_elements=None, depth=1):
         self.element_type = element_type_class
+        self.depth = depth if depth else 1
+        # Full annotation spelling (e.g. "Number[][]"); None -> computed.
+        self.type_name = None
         self.set_pos()
         self.set_context()
         self.list_of_elements = list_of_elements if list_of_elements is not None else []
@@ -942,79 +951,120 @@ class Array(List):
         err = self._validate_element(element)
         if err:
             return None, err
+        element = self._prepare_stored(element)
         return List.push(self, element, index)
 
     def append(self, element):
         err = self._validate_element(element)
         if err:
             return None, err
+        element = self._prepare_stored(element)
         return List.append(self, element)
 
     def swap(self, element, index):
         err = self._validate_element(element)
         if err:
             return None, err
+        element = self._prepare_stored(element)
         return List.swap(self, element, index)
 
-    def _validate_element(self, element):
+    def _type_spelling(self):
+        if self.type_name:
+            return self.type_name
+        return f"{self.element_type.__name__}{'[]' * self.depth}"
+
+    def _make_row(self, elements):
+        """Builds an independent typed row of depth-1 from `elements`."""
+        if type(self) is Array:
+            row = Array(self.element_type, elements, depth=self.depth - 1)
+        else:
+            row = type(self)(elements, depth=self.depth - 1)
+        row.set_pos(self.pos_start, self.pos_end)
+        row.set_context(self.context)
+        if row.depth >= 2:
+            # deeper levels: rows inside the row must be typed too
+            row._validate_all()
+        return row
+
+    def fresh_row(self):
+        """Empty typed row for index-assign auto-vivification.
+
+        Returns None when depth < 2 (elements are scalars, not rows).
+        """
+        if self.depth < 2:
+            return None
+        return self._make_row([])
+
+    def _coerce_row(self, row):
+        """Returns an independent typed copy of a validated row."""
+        if (
+            isinstance(row, Array)
+            and row.element_type is self.element_type
+            and row.depth == self.depth - 1
+        ):
+            return row.copy()
+        src = row.copy() if isinstance(row, List) else row
+        return self._make_row(list(src.list_of_elements))
+
+    def _prepare_stored(self, element):
+        """Normalizes a validated element before storage (typed rows)."""
+        if self.depth >= 2 and isinstance(element, List):
+            return self._coerce_row(element)
+        return element
+
+    def _validate_element(self, element, level=1):
+        """Strict depth-aware validation.
+
+        Levels < depth must hold lists; the final level must hold
+        `element_type` scalars. `level` is the 1-based position of
+        `element` within the declared shape.
+        """
+        depth = self.depth
+        expect = self._type_spelling()
         if isinstance(element, Empty):
-            # V6: only Empty[] may hold none; Number[]/String[]/Bool[] must not
+            # V6: only Empty[] may hold none at any level
             if self.element_type is Empty:
                 return None
             return RunTimeError(
                 self.pos_start,
                 self.pos_end,
-                "RUN115",
-                {"expected_type": self.element_type.__name__},
+                "RUN115" if level == 1 else "RUN116",
+                {"expected_type": expect},
             )
-        if isinstance(element, self.element_type):
-            return None
-        # Support arrays of arrays: allow List (including typed Array) whose
-        # leaves are all of the expected element type. Empty only allowed for Empty[].
-        if isinstance(element, List):
-            stack = [element]
-            while stack:
-                cur = stack.pop()
-                for item in cur.list_of_elements:
-                    if isinstance(item, Empty):
-                        if self.element_type is Empty:
-                            continue
-                        return RunTimeError(
-                            self.pos_start,
-                            self.pos_end,
-                            "RUN116",
-                            {"expected_type": self.element_type.__name__},
-                        )
-                    if isinstance(item, self.element_type):
-                        continue
-                    if isinstance(item, List):
-                        stack.append(item)
-                        continue
-                    return RunTimeError(
-                        self.pos_start,
-                        self.pos_end,
-                        "RUN117",
-                        {
-                            "expected_type": self.element_type.__name__,
-                            "actual_type": type(item).__name__,
-                        },
-                    )
-            return None
-        return RunTimeError(
-            self.pos_start,
-            self.pos_end,
-            "RUN118",
-            {
-                "expected_type": self.element_type.__name__,
-                "actual_type": type(element).__name__,
-            },
-        )
+        if level >= depth:
+            if isinstance(element, self.element_type):
+                return None
+            # Too deep (a list at leaf level) or wrong scalar type
+            code = "RUN118" if level == 1 else "RUN117"
+            return RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                code,
+                {"expected_type": expect, "actual_type": type(element).__name__},
+            )
+        # Intermediate level: must be a list (a row)
+        if not isinstance(element, List):
+            code = "RUN118" if level == 1 else "RUN117"
+            return RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                code,
+                {"expected_type": expect, "actual_type": type(element).__name__},
+            )
+        for item in element.list_of_elements:
+            err = self._validate_element(item, level + 1)
+            if err:
+                return err
+        return None
 
     def _validate_all(self):
         for el in self.list_of_elements:
             err = self._validate_element(el)
             if err:
                 return err
+        if self.depth >= 2:
+            for idx, el in enumerate(self.list_of_elements):
+                self.list_of_elements[idx] = self._coerce_row(el)
         return None
 
     def multiplication(self, other):
@@ -1065,9 +1115,10 @@ class Array(List):
 
     def _new_array(self, elements):
         if type(self) is Array:
-            arr = Array(self.element_type, elements)
+            arr = Array(self.element_type, elements, depth=self.depth)
         else:
-            arr = type(self)(elements)
+            arr = type(self)(elements, depth=self.depth)
+        arr.type_name = self.type_name
         arr.set_pos(self.pos_start, self.pos_end)
         arr.set_context(self.context)
         return arr
@@ -1118,7 +1169,7 @@ class Array(List):
         if err:
             return None, err
         if isinstance(element, (List, Array)):
-            element = element.copy()
+            element = self._prepare_stored(element)
         err = self._check_mutable()
         if err:
             return None, err
@@ -1137,7 +1188,8 @@ class Array(List):
             self.list_of_elements[i] = element
             return None, None
 
-        # dynamic growth: pad with type-default values
+        # dynamic growth: pad with type-default values (depth 1) or
+        # fresh typed rows (depth >= 2, so the shape stays consistent)
         def _default():
             if self.element_type is Number:
                 return (
@@ -1180,7 +1232,10 @@ class Array(List):
             )
 
         while len(self.list_of_elements) < i:
-            self.list_of_elements.append(_default())
+            if self.depth >= 2:
+                self.list_of_elements.append(self._make_row([]))
+            else:
+                self.list_of_elements.append(_default())
         self.list_of_elements.append(element)
         return None, None
 
@@ -1189,23 +1244,23 @@ class Array(List):
 
 
 class NumberArray(Array):
-    def __init__(self, list_of_elements=None):
-        super().__init__(Number, list_of_elements)
+    def __init__(self, list_of_elements=None, depth=1):
+        super().__init__(Number, list_of_elements, depth)
 
 
 class StringArray(Array):
-    def __init__(self, list_of_elements=None):
-        super().__init__(String, list_of_elements)
+    def __init__(self, list_of_elements=None, depth=1):
+        super().__init__(String, list_of_elements, depth)
 
 
 class BooleanArray(Array):
-    def __init__(self, list_of_elements=None):
-        super().__init__(Boolean, list_of_elements)
+    def __init__(self, list_of_elements=None, depth=1):
+        super().__init__(Boolean, list_of_elements, depth)
 
 
 class EmptyArray(Array):
-    def __init__(self, list_of_elements=None):
-        super().__init__(Empty, list_of_elements)
+    def __init__(self, list_of_elements=None, depth=1):
+        super().__init__(Empty, list_of_elements, depth)
 
 
 class Tuple(Value):
@@ -1368,9 +1423,10 @@ class EnvironmentVariable:
                         else:
                             new_elements.append(el)
                     if type(v) is Array:
-                        new_v = Array(v.element_type, new_elements)
+                        new_v = Array(v.element_type, new_elements, depth=v.depth)
                     else:
-                        new_v = type(v)(new_elements)
+                        new_v = type(v)(new_elements, depth=v.depth)
+                    new_v.type_name = v.type_name
                     new_v.set_pos(v.pos_start, v.pos_end)
                     new_v.set_context(v.context)
                     new_v.is_const = True
@@ -1513,7 +1569,7 @@ class Function(Value):
         self.arg_nodes = arg_nodes  # List of tuples: (param_name_tok, param_type_tok)
         self.return_type_tok = return_type_tok
         self.return_type = (
-            TYPE_MAP.get(return_type_tok.value) if return_type_tok else None
+            resolve_type(return_type_tok.value) if return_type_tok else None
         )
         self.set_context(parent_context)
         self.set_pos()
@@ -1558,16 +1614,22 @@ class Function(Value):
             if isinstance(arg_value, (List, Array)):
                 arg_value = arg_value.copy()
 
-            param_type = TYPE_MAP.get(param_type_tok.value) if param_type_tok else None
+            param_type = (
+                resolve_type(param_type_tok.value) if param_type_tok else None
+            )
 
             if (
                 param_type
                 and issubclass(param_type, Array)
                 and isinstance(arg_value, List)
             ):
-                array_class = TYPE_MAP.get(param_type_tok.value)
+                array_class = resolve_type(param_type_tok.value)
                 if array_class:
-                    arg_value = array_class(arg_value.list_of_elements)
+                    arg_value = array_class(
+                        arg_value.list_of_elements,
+                        depth=max(1, array_depth(param_type_tok.value)),
+                    )
+                    arg_value.type_name = param_type_tok.value
                     arg_value.set_pos(err_pos_start, err_pos_end)
                     err = arg_value._validate_all()
                     if err:
@@ -1600,9 +1662,13 @@ class Function(Value):
 
         if self.return_type is not None:
             if issubclass(self.return_type, Array) and isinstance(return_val, List):
-                array_class = TYPE_MAP.get(self.return_type_tok.value)
+                array_class = resolve_type(self.return_type_tok.value)
                 if array_class:
-                    return_val = array_class(return_val.list_of_elements)
+                    return_val = array_class(
+                        return_val.list_of_elements,
+                        depth=max(1, array_depth(self.return_type_tok.value)),
+                    )
+                    return_val.type_name = self.return_type_tok.value
                     return_val.set_pos(err_pos_start, err_pos_end)
                     err = return_val._validate_all()
                     if err:
@@ -1716,6 +1782,37 @@ TYPE_MAP = {
     "StructDefinition": StructDefinition,
 }
 
+_ARRAY_TYPE_RE = re.compile(r"^(?P<base>[A-Za-z_][A-Za-z0-9_]*)(?:\[\])+$")
+
+
+def resolve_type(name):
+    """Resolves a type-annotation spelling to its class.
+
+    Exact TYPE_MAP spellings win; otherwise a base name followed by one
+    or more `[]` suffixes resolves to the base array class, e.g.
+    `Number[][]` -> NumberArray, `Bool[][]` -> BooleanArray.
+    Unknown names return None.
+    """
+    if not name:
+        return None
+    cls = TYPE_MAP.get(name)
+    if cls is not None:
+        return cls
+    match = _ARRAY_TYPE_RE.match(name)
+    if match:
+        return TYPE_MAP.get(match.group("base") + "[]")
+    return None
+
+
+def array_depth(name):
+    """Number of `[]` suffixes in an annotation spelling (0 when not an array)."""
+    if not name:
+        return 0
+    match = _ARRAY_TYPE_RE.match(name)
+    if not match:
+        return 0
+    return (len(name) - len(match.group("base"))) // 2
+
 ERROR_TYPE_MAP = {
     "Error": Error,
     "B_SharpSyntaxError": B_SharpSyntaxError,
@@ -1733,6 +1830,7 @@ def _default_for_type(
     pos_start=None,
     pos_end=None,
     context=None,
+    depth=1,
 ):
     """Returns type-appropriate fallback value for
     implicit `var x : Type;` without initializer.
@@ -1759,18 +1857,10 @@ def _default_for_type(
         return _set(NaN())
     if data_type_class is List:
         return _set(List([]))
-    if data_type_class is NumberArray:
-        return _set(NumberArray([]))
-    if data_type_class is StringArray:
-        return _set(StringArray([]))
-    if data_type_class is BooleanArray:
-        return _set(BooleanArray([]))
-    if data_type_class is EmptyArray:
-        return _set(EmptyArray([]))
 
     if issubclass(data_type_class, Array):
         try:
-            return _set(data_type_class([]))
+            return _set(data_type_class([], depth=max(1, depth)))
         except Exception:
             return _set(Empty())
     return _set(Empty())

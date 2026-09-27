@@ -290,14 +290,17 @@ class Interpreter:
 
         is_implicit = node.value is None
 
-        data_type_class = None
-        if node.data_type:
-            data_type_class = TYPE_MAP.get(node.data_type.value)
+        data_type_name = node.data_type.value if node.data_type else None
+        data_type_class = resolve_type(data_type_name)
 
         if is_implicit:
             # Fallback per Docs/1_Common/2_data_types.md:136
             value = default_for_type(
-                data_type_class, node.pos_start, node.pos_end, context
+                data_type_class,
+                node.pos_start,
+                node.pos_end,
+                context,
+                depth=max(1, array_depth(data_type_name)),
             )
         else:
             value = res.register(self.visit(node.value, context))
@@ -309,13 +312,14 @@ class Interpreter:
             and issubclass(data_type_class, Array)
             and isinstance(value, List)
         ):
-            array_class = TYPE_MAP.get(node.data_type.value)
-            if array_class:
-                value = array_class(value.list_of_elements)
-                value.set_context(context).set_pos(node.pos_start, node.pos_end)
-                err = value._validate_all()
-                if err:
-                    return res.failure(err)
+            value = data_type_class(
+                value.list_of_elements, depth=max(1, array_depth(data_type_name))
+            )
+            value.type_name = data_type_name
+            value.set_context(context).set_pos(node.pos_start, node.pos_end)
+            err = value._validate_all()
+            if err:
+                return res.failure(err)
 
         # Fix 3: alias bug — List/Array assignment must copy (deep) to avoid mutating original
         if isinstance(value, (List, Array)):
@@ -337,14 +341,17 @@ class Interpreter:
 
         is_implicit = node.value is None
 
-        data_type_class = None
-        if node.data_type:
-            data_type_class = TYPE_MAP.get(node.data_type.value)
+        data_type_name = node.data_type.value if node.data_type else None
+        data_type_class = resolve_type(data_type_name)
 
         if is_implicit:
             # Fallback per Docs/1_Common/2_data_types.md:136
             value = default_for_type(
-                data_type_class, node.names[0].pos_start, node.pos_end, context
+                data_type_class,
+                node.names[0].pos_start,
+                node.names[0].pos_end,
+                context,
+                depth=max(1, array_depth(data_type_name)),
             )
         else:
             value = res.register(self.visit(node.value, context))
@@ -356,13 +363,14 @@ class Interpreter:
             and issubclass(data_type_class, Array)
             and isinstance(value, List)
         ):
-            array_class = TYPE_MAP.get(node.data_type.value)
-            if array_class:
-                value = array_class(value.list_of_elements)
-                value.set_context(context).set_pos(node.pos_start, node.pos_end)
-                err = value._validate_all()
-                if err:
-                    return res.failure(err)
+            value = data_type_class(
+                value.list_of_elements, depth=max(1, array_depth(data_type_name))
+            )
+            value.type_name = data_type_name
+            value.set_context(context).set_pos(node.pos_start, node.pos_end)
+            err = value._validate_all()
+            if err:
+                return res.failure(err)
 
         last_val = value
         for name_tok in node.names:
@@ -401,14 +409,19 @@ class Interpreter:
             and issubclass(declared_type, Array)
             and isinstance(value, List)
         ):
-            for key, arr_class in TYPE_MAP.items():
-                if arr_class is declared_type:
-                    value = arr_class(value.list_of_elements)
-                    value.set_context(context).set_pos(node.pos_start, node.pos_end)
-                    val_err = value._validate_all()
-                    if val_err:
-                        return res.failure(val_err)
-                    break
+            current, cur_err = context.variables.get(
+                var_name, node.pos_start, node.pos_end
+            )
+            if cur_err:
+                return res.failure(cur_err)
+            depth = current.depth if isinstance(current, Array) else 1
+            type_name = current.type_name if isinstance(current, Array) else None
+            value = declared_type(value.list_of_elements, depth=depth)
+            value.type_name = type_name
+            value.set_context(context).set_pos(node.pos_start, node.pos_end)
+            val_err = value._validate_all()
+            if val_err:
+                return res.failure(val_err)
 
         # Fix 3: reassignment alias — copy List/Array to keep variable independence
         if isinstance(value, (List, Array)):
@@ -1022,22 +1035,38 @@ class Interpreter:
 
     def visit_IndexAssignNode(self, node, context):
         res = RunTimeResult()
-        # Resolve the target container and index
-        # target is an IndexAccessNode (possibly nested)
+        # target is an IndexAccess chain: root[i1][i2]...[in]
         target = node.target
 
-        # We need to get the object that holds the index we assign to.
-        # For `a[0][1] = v`, target is IndexAccessNode( IndexAccessNode(a,0), 1 )
-        # So we visit target.node to get the inner container, then assign at target.index_node
-        # For simplicity, evaluate the container chain fully:
-        # Use recursion: peel off outermost index, evaluate the inner container via visit
-        container_node = target.node
-        index_node = target.index_node
+        index_nodes = []
+        cursor = target
+        while isinstance(cursor, IndexAccessNode):
+            index_nodes.append(cursor.index_node)
+            cursor = cursor.node
+        index_nodes.reverse()
 
-        container = res.register(self.visit(container_node, context))
+        if not index_nodes:
+            # Defensive: parser only builds index chains for assignment
+            return res.failure(
+                RunTimeError(node.pos_start, node.pos_end, "RUN014")
+            )
+
+        container = res.register(self.visit(cursor, context))
         if res.error:
             return res
-        index_val = res.register(self.visit(index_node, context))
+
+        # Walk intermediate levels; missing/none rows auto-vivify
+        for idx_node in index_nodes[:-1]:
+            idx_val = res.register(self.visit(idx_node, context))
+            if res.error:
+                return res
+            container = res.register(
+                self._assign_step(container, idx_val, idx_node, context)
+            )
+            if res.error:
+                return res
+
+        index_val = res.register(self.visit(index_nodes[-1], context))
         if res.error:
             return res
         value = res.register(self.visit(node.value_node, context))
@@ -1072,6 +1101,69 @@ class Interpreter:
                 "RUN014",
             )
         )
+
+    def _assign_step(self, container, idx_val, idx_node, context):
+        """Resolves one intermediate level of an index-assign chain.
+
+        Missing rows and `none` slots auto-vivify (fresh row objects);
+        non-indexable slots fail with RUN013/RUN014. Reads never vivify.
+        """
+        res = RunTimeResult()
+
+        if isinstance(container, (List, Array)):
+            i, err = self._require_int(idx_val, idx_node)
+            if err:
+                return res.failure(err)
+            n = len(container.list_of_elements)
+            if i < 0:
+                i += n
+            if i < 0:
+                return res.failure(
+                    RunTimeError(idx_node.pos_start, idx_node.pos_end, "RUN011")
+                )
+            if i >= n:
+                return self._vivify_slot(container, i, idx_node, context)
+            slot = container.list_of_elements[i]
+            if isinstance(slot, (List, Array)):
+                return res.success(slot)
+            if isinstance(slot, Empty):
+                return self._vivify_slot(container, i, idx_node, context)
+            if isinstance(slot, String):
+                return res.failure(
+                    RunTimeError(idx_node.pos_start, idx_node.pos_end, "RUN013")
+                )
+            return res.failure(
+                RunTimeError(idx_node.pos_start, idx_node.pos_end, "RUN014")
+            )
+
+        if isinstance(container, String):
+            return res.failure(
+                RunTimeError(idx_node.pos_start, idx_node.pos_end, "RUN013")
+            )
+        return res.failure(
+            RunTimeError(idx_node.pos_start, idx_node.pos_end, "RUN014")
+        )
+
+    def _vivify_slot(self, parent, i, idx_node, context):
+        """Grows `parent` at index `i` with a fresh empty row and returns it."""
+        res = RunTimeResult()
+
+        if isinstance(parent, Array):
+            row = parent.fresh_row()
+            if row is None:
+                # depth-1 typed array holds scalars: cannot nest into it
+                return res.failure(
+                    RunTimeError(idx_node.pos_start, idx_node.pos_end, "RUN014")
+                )
+        else:
+            row = List([])
+        row.set_pos(idx_node.pos_start, idx_node.pos_end).set_context(context)
+
+        _, err = parent.assign_at(i, row)
+        if err:
+            return res.failure(err)
+        # Re-read: typed assign_at stores an independent copy of the row
+        return res.success(parent.list_of_elements[i])
 
     def _resolve_slice_bounds(self, node, context, res, length):
         """Evaluates optional slice endpoints.
@@ -1591,9 +1683,6 @@ class Interpreter:
             )
 
         if isinstance(obj, StructInstance):
-            # --- Temporary instance guard: Math().y = 12 must be rejected ---
-            # Only allow assignment when target originates from a variable (or property chain via variable)
-            # CallNode indicates temporary: Math() returns fresh instance that would be discarded
             if isinstance(node.target, CallNode):
                 prop_name = node.property_name.value
                 return res.failure(

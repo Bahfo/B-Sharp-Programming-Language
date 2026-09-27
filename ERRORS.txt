@@ -1,4 +1,0 @@
-# Errors in Functions: 
-
-1. Currently, not calling (return) after ending a function is not caught as an error.
-2. Currently, B-Sharp does not accept multiple outputs from the same function.

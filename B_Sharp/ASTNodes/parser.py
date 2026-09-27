@@ -20,7 +20,8 @@ _RECERSION_HEADROOM_LIMIT = 8000
 _VALID_TYPES_MESSAGE = (
     "Valid types (uppercase required): "
     "Bool, Number, String, Empty, List, Inf, NaN, Function, "
-    "Number[], String[], Boolean[], Empty[]."
+    "Number[], String[], Boolean[], Empty[]. "
+    "The [] suffix may be repeated for nesting, e.g. Number[][]."
 )
 
 
@@ -518,8 +519,13 @@ class Parser:
     ################################################################
 
     def _parse_array_suffix(self, type_tok):
-        """Check for [] suffix after a type token. Returns (modified_token, error)."""
-        if self.current_token.type == TOKEN_LBRACKET:
+        """Consumes any number of `[]` suffixes after a type token.
+
+        Returns (modified_token, error). `Number[][]` is valid; a single
+        non-`]` inside a suffix (e.g. `Number[3]`) is SYN013; `List[]`
+        remains rejected as SYN014.
+        """
+        while self.current_token.type == TOKEN_LBRACKET:
             self.forward()
             if self.current_token.type != TOKEN_RBRACKET:
                 return None, B_SharpSyntaxError(
@@ -592,7 +598,7 @@ class Parser:
             if err:
                 return res.failure(err)
 
-            if TYPE_MAP.get(type_tok.value) is None:
+            if resolve_type(type_tok.value) is None:
                 return res.failure(
                     B_SharpSyntaxError(
                         type_tok.pos_start,
@@ -1382,6 +1388,7 @@ class Parser:
                         return res
                 else:
                     node = PropertyAccessNode(node, property_tok)
+
             else:
                 break
         return res.success(node)
@@ -1619,7 +1626,7 @@ class Parser:
                     param_type, err = self._parse_array_suffix(param_type)
                     if err:
                         return res.failure(err)
-                    if TYPE_MAP.get(param_type.value) is None:
+                    if resolve_type(param_type.value) is None:
                         return res.failure(
                             B_SharpSyntaxError(
                                 param_type.pos_start,
@@ -1690,7 +1697,7 @@ class Parser:
                         param_type, err = self._parse_array_suffix(param_type)
                         if err:
                             return res.failure(err)
-                        if TYPE_MAP.get(param_type.value) is None:
+                        if resolve_type(param_type.value) is None:
                             return res.failure(
                                 B_SharpSyntaxError(
                                     param_type.pos_start,
@@ -1778,7 +1785,7 @@ class Parser:
                 return_type_tok, err = self._parse_array_suffix(return_type_tok)
                 if err:
                     return res.failure(err)
-                if TYPE_MAP.get(return_type_tok.value) is None:
+                if resolve_type(return_type_tok.value) is None:
                     return res.failure(
                         B_SharpSyntaxError(
                             return_type_tok.pos_start,

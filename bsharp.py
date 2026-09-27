@@ -6,7 +6,6 @@ from B_Sharp.frontend import parse_source
 from B_Sharp.ASTNodes.instances import Context
 from B_Sharp.builtins import register_builtins
 from B_Sharp.ASTNodes.interpreter import Interpreter
-from B_Sharp.Compiler.driver import CompilerDriver, CompileOptions
 from B_Sharp.CodeExecution.caller_macros import (
     get_config,
     render_value,
@@ -36,38 +35,6 @@ def run_source(file_name, source_text, context=None, measure_time=False):
 
     elapsed_time = (time.perf_counter() - start_time) if measure_time else None
     return result.value, None, elapsed_time
-
-
-def compile_file(file_path, options: CompileOptions):
-    """
-    Compiles a .bsharp source file to a standalone native binary via B# LLVM Compiler.
-    """
-    if not file_path.endswith(".bsharp"):
-        print(
-            "Error: Invalid file extension. B_Sharp compiler requires '.bsharp' files."
-        )
-        sys.exit(1)
-
-    if not os.path.exists(file_path):
-        print(f"Error: File '{file_path}' does not exist.")
-        sys.exit(1)
-
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            source_text = f.read()
-    except Exception as e:
-        print(f"Error reading file '{file_path}': {e}")
-        sys.exit(1)
-
-    frontend_res = parse_source(file_path, source_text)
-    if frontend_res.has_error:
-        print(frontend_res.error)
-        sys.exit(1)
-
-    driver = CompilerDriver(file_path, options)
-    success = driver.compile(frontend_res.ast_root, frontend_res.file_config)
-    if not success:
-        sys.exit(1)
 
 
 def run_file(file_path, measure_time=False):
@@ -155,24 +122,6 @@ if __name__ == "__main__":
             sys.exit(1)
 
         source_file = args[1]
-        options = CompileOptions()
-
-        i = 2
-        while i < len(args):
-            if args[i] == "-o" and i + 1 < len(args):
-                options.output_path = args[i + 1]
-                i += 2
-            elif args[i] == "--emit-llvm":
-                options.emit_llvm = True
-                i += 1
-            elif args[i] == "--emit-c":
-                options.emit_c = True
-                i += 1
-            else:
-                print(f"Unknown compiler option: {args[i]}")
-                sys.exit(1)
-
-        compile_file(source_file, options)
     else:
         measure_time = False
         if "--measure" in args:

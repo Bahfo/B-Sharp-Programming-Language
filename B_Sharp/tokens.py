@@ -56,6 +56,8 @@ TOKEN_DOTDOT = "TOKEN_DOTDOT"
 TOKEN_BANG = "BANG"
 # Macros
 TOKEN_MACRO = "MACRO"
+# Ellipsis
+TOKEN_ELLIPSIS = "ELLIPSIS"
 
 # All Keywords
 KEYWORDS = [
@@ -97,7 +99,13 @@ KEYWORDS = [
 ]
 
 # All Caller Macros Types
-possible_macros = ["pragma", "error", "panic", "allow", "remember"]
+possible_macros = [
+    "pragma",
+    "error",
+    "panic",
+    "allow",
+    "remember",
+]
 
 # Colors
 RESET = "\033[0m"
