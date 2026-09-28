@@ -168,17 +168,28 @@ class Number(Value):
 
     def addition(self, other):
         if isinstance(other, Number):
-            return Number(self.value + other.value), None
+            try:
+                return Number(self.value + other.value), None
+            except OverflowError:
+                # Mixing an exact bignum with a float (or reaching the
+                # float range) overflows: refuse like the power guard.
+                return None, BSharpMathError(self.pos_start, self.pos_end)
         return self._op_error("addition")
 
     def subtraction(self, other):
         if isinstance(other, Number):
-            return Number(self.value - other.value), None
+            try:
+                return Number(self.value - other.value), None
+            except OverflowError:
+                return None, BSharpMathError(self.pos_start, self.pos_end)
         return self._op_error("subtraction")
 
     def multiplication(self, other):
         if isinstance(other, Number):
-            return Number(self.value * other.value), None
+            try:
+                return Number(self.value * other.value), None
+            except OverflowError:
+                return None, BSharpMathError(self.pos_start, self.pos_end)
         if isinstance(other, (List, Array)):
             # Scalar-vector multiplication works in both directions.
             return other._reversed_multiplication(self)
@@ -192,7 +203,10 @@ class Number(Value):
                     self.pos_end,
                     "RUN100",
                 )
-            return Number(self.value / other.value), None
+            try:
+                return Number(self.value / other.value), None
+            except OverflowError:
+                return None, BSharpMathError(self.pos_start, self.pos_end)
         return self._op_error("division")
 
     def integer_division(self, other):
@@ -448,7 +462,11 @@ class String(Value):
                     self.pos_end,
                     "RUN107",
                 )
-            return String(self.value * other.value), None
+            try:
+                return String(self.value * other.value), None
+            except OverflowError:
+                # Factor too large to ever materialise as a string.
+                return None, BSharpMathError(self.pos_start, self.pos_end)
         return None, RunTimeError(
             self.pos_start,
             self.pos_end,
@@ -645,6 +663,9 @@ class List(Value):
                 "MOD001",
             )
         return None
+
+    def true_(self):
+        return len(self.list_of_elements) > 0
 
     # ---------- index helpers ----------
 
@@ -1313,6 +1334,9 @@ class Tuple(Value):
     def copy(self):
         return self
 
+    def true_(self):
+        return len(self.elements) > 0
+
     def __repr__(self):
         return "(" + ", ".join(repr(e) for e in self.elements) + ")"
 
@@ -1861,6 +1885,9 @@ class StructInstance(Value):
 
     def set_field(self, name, value, pos_start=None, pos_end=None):
         return self.environment.assign(name, value, pos_start, pos_end)
+
+    def true_(self):
+        return True
 
     def __repr__(self):
         fields = ", ".join(

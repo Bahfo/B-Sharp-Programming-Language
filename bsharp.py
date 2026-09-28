@@ -26,11 +26,13 @@ def run_source(file_name, source_text, context=None, measure_time=False):
     # Unified Frontend Call
     frontend_res = parse_source(file_name, source_text)
     if frontend_res.has_error:
+        frontend_res.error.phase = "parse"
         return None, frontend_res.error, None
 
     interpreter = Interpreter()
     result = interpreter.visit(frontend_res.ast_root, context)
     if result.error:
+        result.error.phase = "runtime"
         return None, result.error, None
 
     elapsed_time = (time.perf_counter() - start_time) if measure_time else None
@@ -62,6 +64,7 @@ def run_file(file_path, measure_time=False):
 
     if error:
         print(error)
+        sys.exit(2 if getattr(error, "phase", "runtime") == "parse" else 1)
     elif value is not None and repr(value) != "none":
         print(render_value(value, get_config(file_path)))
 
