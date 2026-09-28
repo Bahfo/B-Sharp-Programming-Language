@@ -1,6 +1,8 @@
 # B-Sharp Project
 ## *The B-Sharp Programming Language Official Source Code*
 
+##### **Currently, two branches exist, one hosts the compiler implementation**
+
 This repository contains the source code for the B-Sharp Programming Language.
 
 ## Table of Contents
