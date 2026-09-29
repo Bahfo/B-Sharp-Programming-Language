@@ -275,7 +275,7 @@ class Interpreter:
                     node.op_token.pos_start,
                     node.pos_end,
                     "RUN003",
-                    {"type_name": type(operand).__name__},
+                    {"type_name": type_spelling(operand)},
                 )
         elif node.op_token.type == TOKEN_PLUS:
             result, error = operand, None
@@ -765,7 +765,7 @@ class Interpreter:
                         "RUN028",
                         {
                             "func_name": func_name,
-                            "return_type": func_value.return_type.__name__,
+                            "return_type": class_spelling(func_value.return_type),
                         },
                     )
                 )
@@ -870,13 +870,30 @@ class Interpreter:
             )
 
         args = []
-        for arg_node in node.arg_nodes:
+        arg_names = []
+        for i, arg_node in enumerate(node.arg_nodes):
             arg_val = res.register(self.visit(arg_node, context))
             if res.error:
                 return res
             args.append(arg_val)
+            arg_names.append(node.arg_names[i])
 
         if isinstance(value_to_call, BuiltinFunction):
+            # Builtins declare no parameters, so they take positional
+            # arguments only.
+            for name_tok in arg_names:
+                if name_tok is not None:
+                    return res.failure(
+                        RunTimeError(
+                            name_tok.pos_start,
+                            name_tok.pos_end,
+                            "RUN142",
+                            {
+                                "func_name": value_to_call.name,
+                                "param": name_tok.value,
+                            },
+                        )
+                    )
             value_to_call.set_context(context)
             value_to_call.pos_start = node.pos_start
             value_to_call.pos_end = node.pos_end
@@ -891,7 +908,7 @@ class Interpreter:
 
         if isinstance(value_to_call, StructDefinition):
             instance, err = value_to_call.instantiate(
-                self, node.pos_start, node.pos_end
+                self, args, arg_names, node.pos_start, node.pos_end
             )
             if err:
                 return res.failure(err)
@@ -912,7 +929,11 @@ class Interpreter:
         try:
             return_value = res.register(
                 value_to_call.execute(
-                    args, self, call_pos_start=node.pos_start, call_pos_end=node.pos_end
+                    args,
+                    self,
+                    arg_names=arg_names,
+                    call_pos_start=node.pos_start,
+                    call_pos_end=node.pos_end,
                 )
             )
         finally:
@@ -994,16 +1015,9 @@ class Interpreter:
                 )
             return res.success(field_val.set_pos(*pos))
 
-        # Typed arrays must be checked before base Array/List
-        if isinstance(obj, NumberArray):
-            type_name = "Number[]"
-        elif isinstance(obj, StringArray):
-            type_name = "String[]"
-        elif isinstance(obj, BooleanArray):
-            type_name = "Bool[]"
-        elif isinstance(obj, EmptyArray):
-            type_name = "Empty[]"
-        elif isinstance(obj, Array):
+        # Typed arrays must be checked before base Array/List (they subclass
+        # both). Every array reports the same name.
+        if isinstance(obj, Array):
             type_name = "Array"
         elif isinstance(obj, Tuple):
             type_name = "Tuple"
@@ -1024,7 +1038,7 @@ class Interpreter:
         elif isinstance(obj, (Function, BuiltinFunction)):
             type_name = "Function"
         else:
-            type_name = type(obj).__name__
+            type_name = type_spelling(obj)
 
         if _property == "type":
             return res.success(String(type_name).set_context(context).set_pos(*pos))
@@ -1035,7 +1049,7 @@ class Interpreter:
                 node.pos_start,
                 node.pos_end,
                 "RUN010",
-                {"property": _property, "type_name": obj.__class__.__name__},
+                {"property": _property, "type_name": type_name},
             )
         )
 
@@ -1547,7 +1561,7 @@ class Interpreter:
                     node.pos_start,
                     node.pos_end,
                     "RUN022",
-                    {"method": method_name, "type_name": obj.__class__.__name__},
+                    {"method": method_name, "type_name": type_spelling(obj)},
                 )
             )
 
@@ -1564,7 +1578,7 @@ class Interpreter:
                     node.pos_start,
                     node.pos_end,
                     "RUN022",
-                    {"method": method_name, "type_name": obj.__class__.__name__},
+                    {"method": method_name, "type_name": type_spelling(obj)},
                 )
             )
 

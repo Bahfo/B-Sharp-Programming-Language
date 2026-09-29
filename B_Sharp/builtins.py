@@ -184,7 +184,7 @@ def _to_number(args, context, call_node):
             return None, RunTimeError(None, None, "RUN136", {"value": val.value})
     if isinstance(val, Boolean):
         return Number(1 if val.value else 0), None
-    return None, RunTimeError(None, None, "RUN137", {"type_name": type(val).__name__})
+    return None, RunTimeError(None, None, "RUN137", {"type_name": type_spelling(val)})
 
 
 def _to_string(args, context, call_node):

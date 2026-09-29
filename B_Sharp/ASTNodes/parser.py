@@ -20,7 +20,7 @@ _RECERSION_HEADROOM_LIMIT = 8000
 _VALID_TYPES_MESSAGE = (
     "Valid types (uppercase required): "
     "Bool, Number, String, Empty, List, Inf, NaN, Function, Tuple, "
-    "Number[], String[], Boolean[], Empty[]. "
+    "Number[], String[], Bool[], Empty[]. "
     "The [] suffix may be repeated for nesting, e.g. Number[][]. "
     "Tuple annotations: Tuple, Tuple(), Tuple(Number), "
     "Tuple(4 : Number), Tuple(Number, String), "
@@ -1638,9 +1638,50 @@ class Parser:
             MethodCallNode(object_node, method_name_tok, arg_nodes, rparen_pos)
         )
 
+    def _call_argument(self, res):
+        """Parses one call argument: `value`, or `name = value`.
+
+        Returns the (name_token | None, value_node) pair; a parse failure is
+        left in `res`. The name is kept as a token so the interpreter can bind
+        it to a parameter without pretending an assignment happened.
+        """
+        name_tok = None
+        if (
+            self.current_token.type == TOKEN_IDENTIFIER
+            and self.token_index + 1 < len(self.tokens)
+            and self.tokens[self.token_index + 1].type == TOKEN_EQUAL
+        ):
+            name_tok = self.current_token
+            res.register_forward()
+            self.forward()
+            res.register_forward()
+            self.forward()
+
+        value_node = res.register(self.expression())
+        if res.error:
+            return None, None
+        return name_tok, value_node
+
+    def _param_default(self, res):
+        """Parses an optional `= <expression>` parameter default.
+
+        Returns the default node, or None when the parameter declares no
+        default (or when the expression itself failed to parse, leaving the
+        error in `res`).
+        """
+        if self.current_token.type != TOKEN_EQUAL:
+            return None
+        res.register_forward()
+        self.forward()
+        default_node = res.register(self.expression())
+        if res.error:
+            return None
+        return default_node
+
     def finish_call(self, node_to_call):
         res = ParserResults()
         arg_nodes = []
+        arg_names = []
 
         res.register_forward()
         self.forward()
@@ -1651,20 +1692,22 @@ class Parser:
             rparen_pos = self.current_token.pos_end
             res.register_forward()
             self.forward()
-            return res.success(CallNode(node_to_call, arg_nodes, pos_end=rparen_pos))
+            return res.success(
+                CallNode(node_to_call, arg_nodes, arg_names, pos_end=rparen_pos)
+            )
 
-        arg_nodes.append(res.register(self.expression()))
-        if res.error:
-            return res
+        while True:
+            name_tok, value_node = self._call_argument(res)
+            if res.error:
+                return res
+            arg_names.append(name_tok)
+            arg_nodes.append(value_node)
 
-        while self.current_token.type == TOKEN_COMMA:
+            if self.current_token.type != TOKEN_COMMA:
+                break
             res.register_forward()
             self.forward()
             self._skip_newlines(res)
-
-            arg_nodes.append(res.register(self.expression()))
-            if res.error:
-                return res
 
         self._skip_newlines(res)
 
@@ -1680,7 +1723,9 @@ class Parser:
         rparen_pos = self.current_token.pos_end
         res.register_forward()
         self.forward()
-        return res.success(CallNode(node_to_call, arg_nodes, pos_end=rparen_pos))
+        return res.success(
+            CallNode(node_to_call, arg_nodes, arg_names, pos_end=rparen_pos)
+        )
 
     def fn_def(self):
         res = ParserResults()
@@ -1784,7 +1829,11 @@ class Parser:
                         )
                     )
 
-            arg_nodes.append((param_name, param_type))
+            param_default = self._param_default(res)
+            if res.error:
+                return res
+
+            arg_nodes.append((param_name, param_type, param_default))
             if param_name.value in seen_param_names:
                 if param_name.value == var_name_tok.value:
                     return res.failure(
@@ -1865,7 +1914,11 @@ class Parser:
                         )
                     )
 
-                arg_nodes.append((param_name, param_type))
+                param_default = self._param_default(res)
+                if res.error:
+                    return res
+
+                arg_nodes.append((param_name, param_type, param_default))
                 if param_name.value in seen_param_names:
                     if param_name.value == var_name_tok.value:
                         return res.failure(

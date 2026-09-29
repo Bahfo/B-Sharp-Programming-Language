@@ -6,6 +6,7 @@
 # needed-to-define keyword instances (functions, variables, etc.).
 
 from B_Sharp.Errors.errors import *
+from B_Sharp.tokens import TYPE_KEYWORDS
 
 import math
 import re
@@ -43,7 +44,7 @@ class Value:
             self.pos_start,
             self.pos_end,
             "RUN099",
-            {"type_name": type(self).__name__.lower(), "op": op},
+            {"type_name": type_spelling(self).lower(), "op": op},
         )
 
     def addition(self, other):
@@ -376,7 +377,7 @@ class Boolean(Value):
     ```
     Booleans can be also used in variables assignments. For example:
     ```
-    var boolean_example : Boolean = true
+    var boolean_example : Bool = true
     var boolean_2 = false
     const BooleanValue = true
     ```
@@ -877,7 +878,7 @@ class List(Value):
             self.pos_start,
             self.pos_end,
             "RUN112",
-            {"type_name": type(other).__name__},
+            {"type_name": type_spelling(other)},
         )
 
     def division(self, other):
@@ -919,7 +920,7 @@ class List(Value):
             self.pos_start,
             self.pos_end,
             "RUN114",
-            {"type_name": type(other).__name__},
+            {"type_name": type_spelling(other)},
         )
 
     def _reversed_multiplication(self, other):
@@ -1002,9 +1003,15 @@ class Array(List):
         return List.swap(self, element, index)
 
     def _type_spelling(self):
-        if self.type_name:
-            return self.type_name
-        return f"{self.element_type.__name__}{'[]' * self.depth}"
+        """Canonical B# spelling of this array's type, e.g. `Number[][]`.
+
+        Built from the declared element type plus the recorded nesting depth,
+        so a nested array keeps every `[]` level instead of collapsing to the
+        flat spelling, and element types are always spelled the way the
+        language spells them (`Bool[]`, never `Boolean[]`).
+        """
+        base = class_spelling(self.element_type)
+        return f"{base}{'[]' * max(1, self.depth)}"
 
     def _make_row(self, elements):
         """Builds an independent typed row of depth-1 from `elements`."""
@@ -1073,7 +1080,7 @@ class Array(List):
                 self.pos_start,
                 self.pos_end,
                 code,
-                {"expected_type": expect, "actual_type": type(element).__name__},
+                {"expected_type": expect, "actual_type": type_spelling(element)},
             )
         # Intermediate level: must be a list (a row)
         if not isinstance(element, List):
@@ -1082,7 +1089,7 @@ class Array(List):
                 self.pos_start,
                 self.pos_end,
                 code,
-                {"expected_type": expect, "actual_type": type(element).__name__},
+                {"expected_type": expect, "actual_type": type_spelling(element)},
             )
         for item in element.list_of_elements:
             err = self._validate_element(item, level + 1)
@@ -1111,7 +1118,7 @@ class Array(List):
             self.pos_start,
             self.pos_end,
             "RUN119",
-            {"type_name": type(other).__name__},
+            {"type_name": type_spelling(other)},
         )
 
     def division(self, other):
@@ -1654,7 +1661,7 @@ class EnvironmentVariable:
         if data_type is Empty:
             if isinstance(value, Empty):
                 return None
-            val_type_str = type(value).__name__
+            val_type_str = type_spelling(value)
             return AssignmentError(
                 pos_start,
                 pos_end,
@@ -1665,12 +1672,12 @@ class EnvironmentVariable:
         if isinstance(value, data_type):
             return None
 
-        val_type_str = type(value).__name__
+        val_type_str = type_spelling(value)
         return AssignmentError(
             pos_start,
             pos_end,
             "ASN005",
-            {"actual_type": val_type_str, "expected_type": data_type.__name__},
+            {"actual_type": val_type_str, "expected_type": class_spelling(data_type)},
         )
 
 
@@ -1684,7 +1691,7 @@ class Function(Value):
     ):
         self.name = name
         self.body_node = body_node
-        self.arg_nodes = arg_nodes  # List of tuples: (param_name_tok, param_type_tok)
+        self.arg_nodes = arg_nodes  # (param_name_tok, param_type_tok, default_node)
         self.return_type_tok = return_type_tok
         self.return_type = (
             resolve_type(return_type_tok.value) if return_type_tok else None
@@ -1692,7 +1699,65 @@ class Function(Value):
         self.set_context(parent_context)
         self.set_pos()
 
-    def execute(self, args, interpreter, call_pos_start=None, call_pos_end=None):
+    def _bind_arguments(self, args, arg_names, pos_start, pos_end):
+        """Maps call arguments onto the declared parameters.
+
+        Positional arguments fill parameters in declaration order; named
+        arguments (`name = value`) may follow them in any order. Returns
+        (bindings, None) on success, or (None, error).
+        """
+        param_names = [name_tok.value for name_tok, _, _ in self.arg_nodes]
+        bindings = {}
+        positional_index = 0
+        seen_named = False
+
+        for i, arg_value in enumerate(args):
+            name_tok = arg_names[i] if arg_names else None
+
+            if name_tok is None:
+                if seen_named:
+                    return None, RunTimeError(pos_start, pos_end, "RUN141", {})
+                if positional_index >= len(param_names):
+                    return None, RunTimeError(
+                        pos_start,
+                        pos_end,
+                        "RUN122",
+                        {
+                            "func_name": self.name,
+                            "expected": len(param_names),
+                            "actual": len(args),
+                        },
+                    )
+                param_name = param_names[positional_index]
+                positional_index += 1
+                err_pos_start, err_pos_end = pos_start, pos_end
+            else:
+                seen_named = True
+                if name_tok.value not in param_names:
+                    return None, RunTimeError(
+                        name_tok.pos_start,
+                        name_tok.pos_end,
+                        "RUN142",
+                        {"func_name": self.name, "param": name_tok.value},
+                    )
+                param_name = name_tok.value
+                err_pos_start, err_pos_end = name_tok.pos_start, name_tok.pos_end
+
+            if param_name in bindings:
+                return None, RunTimeError(
+                    err_pos_start,
+                    err_pos_end,
+                    "RUN143",
+                    {"param": param_name},
+                )
+
+            bindings[param_name] = arg_value
+
+        return bindings, None
+
+    def execute(
+        self, args, interpreter, arg_names=None, call_pos_start=None, call_pos_end=None
+    ):
         from B_Sharp.ASTNodes.interpreter import RunTimeResult
 
         res = RunTimeResult()
@@ -1707,10 +1772,20 @@ class Function(Value):
             in_function=True,
         )
 
-        if len(args) != len(self.arg_nodes):
-            expected_count = len(self.arg_nodes)
-            arg_label = "argument" if expected_count == 1 else "arguments"
+        bindings, err = self._bind_arguments(
+            args, arg_names, err_pos_start, err_pos_end
+        )
+        if err:
+            return res.failure(err)
 
+        # Every parameter without a default must have been given a value.
+        required = [
+            name_tok.value
+            for name_tok, _, default_node in self.arg_nodes
+            if default_node is None
+        ]
+        missing = [name for name in required if name not in bindings]
+        if missing:
             return res.failure(
                 RunTimeError(
                     err_pos_start,
@@ -1718,15 +1793,21 @@ class Function(Value):
                     "RUN122",
                     {
                         "func_name": self.name,
-                        "expected": expected_count,
-                        "actual": len(args),
+                        "expected": len(required),
+                        "actual": len(required) - len(missing),
                     },
                 )
             )
 
-        for i in range(len(args)):
-            param_name_tok, param_type_tok = self.arg_nodes[i]
-            arg_value = args[i]
+        for param_name_tok, param_type_tok, param_default in self.arg_nodes:
+            if param_name_tok.value in bindings:
+                arg_value = bindings[param_name_tok.value]
+            else:
+                # Parameter was omitted: fall back to its declared default.
+                default_res = interpreter.visit(param_default, exec_context)
+                if default_res.error:
+                    return res.failure(default_res.error)
+                arg_value = default_res.value
 
             # Full isolation: deep copy List/Array args so caller not mutated
             if isinstance(arg_value, (List, Array)):
@@ -1794,7 +1875,7 @@ class Function(Value):
             if not isinstance(return_val, self.return_type) and not (
                 self.return_type is Empty and isinstance(return_val, Empty)
             ):
-                val_type_str = type(return_val).__name__
+                val_type_str = type_spelling(return_val)
                 return res.failure(
                     RunTimeError(
                         err_pos_start,
@@ -1803,7 +1884,7 @@ class Function(Value):
                         {
                             "func_name": self.name,
                             "actual_type": val_type_str,
-                            "expected_type": self.return_type.__name__,
+                            "expected_type": class_spelling(self.return_type),
                         },
                     )
                 )
@@ -1871,7 +1952,9 @@ class StructDefinition(Value):
         self.parent_context = parent_context
         self.set_pos()
 
-    def instantiate(self, interpreter, pos_start=None, pos_end=None):
+    def instantiate(
+        self, interpreter, args=None, arg_names=None, pos_start=None, pos_end=None
+    ):
         exec_context = Context(
             display_name=f"<struct {self.name}>", parent=self.parent_context
         )
@@ -1881,8 +1964,81 @@ class StructDefinition(Value):
             if res.error:
                 return None, res.error
 
+        if args:
+            err = self._bind_fields(
+                exec_context,
+                args,
+                arg_names,
+                pos_start or self.pos_start,
+                pos_end or self.pos_end,
+            )
+            if err:
+                return None, err
+
         instance = StructInstance(self.name, exec_context.variables)
         return instance, None
+
+    def _bind_fields(self, exec_context, args, arg_names, pos_start, pos_end):
+        """Fills the struct's fields from its constructor arguments.
+
+        Positional arguments fill writable fields in declaration order; named
+        arguments (`field = value`) may follow them in any order. Fields left
+        unbound keep the value their declaration gave them.
+        """
+        variables = exec_context.variables.variables
+        positional_fields = [
+            name for name, entry in variables.items() if not entry["is_const"]
+        ]
+        bindings = {}
+        positional_index = 0
+        seen_named = False
+
+        for i, value in enumerate(args):
+            name_tok = arg_names[i] if arg_names else None
+
+            if name_tok is None:
+                if seen_named:
+                    return RunTimeError(pos_start, pos_end, "RUN141", {})
+                if positional_index >= len(positional_fields):
+                    return RunTimeError(
+                        pos_start,
+                        pos_end,
+                        "RUN140",
+                        {
+                            "struct_name": self.name,
+                            "expected": len(positional_fields),
+                            "actual": len(args),
+                        },
+                    )
+                field_name = positional_fields[positional_index]
+                positional_index += 1
+                err_pos_start, err_pos_end = pos_start, pos_end
+            else:
+                seen_named = True
+                if name_tok.value not in variables:
+                    return RunTimeError(
+                        name_tok.pos_start,
+                        name_tok.pos_end,
+                        "RUN144",
+                        {"struct_name": self.name, "field": name_tok.value},
+                    )
+                field_name = name_tok.value
+                err_pos_start, err_pos_end = name_tok.pos_start, name_tok.pos_end
+
+            if field_name in bindings:
+                return RunTimeError(
+                    err_pos_start, err_pos_end, "RUN143", {"param": field_name}
+                )
+
+            bindings[field_name] = value
+
+        for field_name, value in bindings.items():
+            _, err = exec_context.variables.assign(
+                field_name, value, pos_start, pos_end
+            )
+            if err:
+                return err
+        return None
 
     def __repr__(self):
         return f"<struct_def {self.name}>"
@@ -1927,9 +2083,31 @@ class StructInstance(Value):
         return f"{self.struct_name} {{ {fields} }}"
 
 
-# A helper dictionary for all declared types.
-# Only these canonical uppercase spellings are valid type annotations.
-TYPE_MAP = {
+# Runtime class -> the name B# spells it with. Class names are Python-side
+# detail (`Boolean`), annotations and messages use `Bool`.
+_CLASS_SPELLING = {
+    Boolean: "Bool",
+    NumberArray: "Number[]",
+    StringArray: "String[]",
+    BooleanArray: "Bool[]",
+    EmptyArray: "Empty[]",
+}
+
+
+def class_spelling(cls):
+    """B# name of a runtime class (`Bool`, `Number[]`)."""
+    return _CLASS_SPELLING.get(cls, cls.__name__)
+
+
+def type_spelling(value):
+    """B# name of a value's type; typed arrays keep their `[]` depth."""
+    if isinstance(value, Array):
+        return value._type_spelling()
+    return class_spelling(type(value))
+
+
+# Bindings for the type keywords declared in B_Sharp.tokens (TYPE_KEYWORDS).
+_TYPE_CLASSES = {
     "Bool": Boolean,
     "Number": Number,
     "String": String,
@@ -1938,41 +2116,39 @@ TYPE_MAP = {
     "Empty": Empty,
     "List": List,
     "Function": Function,
-    "Number[]": NumberArray,
-    "String[]": StringArray,
-    "Boolean[]": BooleanArray,
-    "Bool[]": BooleanArray,
-    "Empty[]": EmptyArray,
-    "StructDefinition": StructDefinition,
     "Tuple": Tuple,
 }
 
 _ARRAY_TYPE_RE = re.compile(r"^(?P<base>[A-Za-z_][A-Za-z0-9_]*)(?:\[\])+$")
 
+# Element class -> its typed-array class: which types accept `[]` suffixes.
+_ARRAY_CLASSES = {
+    Boolean: BooleanArray,
+    Number: NumberArray,
+    String: StringArray,
+    Empty: EmptyArray,
+}
+
 
 def resolve_type(name):
     """Resolves a type-annotation spelling to its class.
 
-    Exact TYPE_MAP spellings win; otherwise a base name followed by one
-    or more `[]` suffixes resolves to the base array class, e.g.
-    `Number[][]` -> NumberArray, `Bool[][]` -> BooleanArray.
-    Tuple spellings (`Tuple`, `Tuple()`, `Tuple(Number)`,
-    `Tuple(4 : Number)`, `Tuple(Number, String)`,
-    `Tuple(2 : Number, 3 : String)`) resolve to Tuple.
-    Unknown or malformed names return None.
+    The keyword list in B_Sharp.tokens owns the spellings; this only binds
+    them to classes. `Number[][]` -> NumberArray, `Bool[][]` -> BooleanArray,
+    `Tuple(...)` spellings -> Tuple. Unknown names return None.
     """
     if not name:
         return None
-    cls = TYPE_MAP.get(name)
-    if cls is not None:
-        return cls
     if name.startswith("Tuple("):
         spec, _ = parse_tuple_type(name)
         return Tuple if spec is not None else None
     match = _ARRAY_TYPE_RE.match(name)
-    if match:
-        return TYPE_MAP.get(match.group("base") + "[]")
-    return None
+    base = match.group("base") if match else name
+    if base not in TYPE_KEYWORDS:
+        return None
+    cls = _TYPE_CLASSES[base]
+    # Tuple[]/List[]/... are not arrays -> _ARRAY_CLASSES lookup returns None
+    return _ARRAY_CLASSES.get(cls) if match else cls
 
 
 def array_depth(name):
@@ -2086,7 +2262,7 @@ def tuple_violation(spec, value):
     if spec is None or spec.kind == "any":
         return None
     if not isinstance(value, Tuple):
-        return f"expected a tuple, got {type(value).__name__}"
+        return f"expected a tuple, got {type_spelling(value)}"
     n = len(value.elements)
 
     if spec.kind == "empty":
@@ -2108,7 +2284,7 @@ def tuple_violation(spec, value):
             continue
         cls = resolve_type(slot)
         if cls is None or not isinstance(element, cls):
-            return f"element {i} must be {slot}, got {type(element).__name__}"
+            return f"element {i} must be {slot}, got {type_spelling(element)}"
     return None
 
 

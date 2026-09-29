@@ -121,7 +121,7 @@ ERROR_CATALOG = {
     "SYN018": {
         "name": "Syntax Error",
         "message": "Unknown data type '{type_name}'",
-        "hint": "Valid types are: Bool, Number, String, Empty, List, Inf, NaN, Function, Number[], String[], Boolean[], Empty[]",
+        "hint": "Valid types are: Bool, Number, String, Empty, List, Inf, NaN, Function, Tuple, Number[], String[], Bool[], Empty[]",
     },
     "SYN019": {
         "name": "Syntax Error",
@@ -802,6 +802,32 @@ ERROR_CATALOG = {
         "message": "Cannot modify a tuple (tuples are immutable)",
         "hint": "Reassign the whole variable with a new tuple instead of editing elements",
     },
+    # Argument Binding Errors
+    "RUN140": {
+        "name": "RunTime Error",
+        "message": "Struct '{struct_name}' expects {expected} arguments, but got {actual}",
+        "hint": "Pass at most that many positional values, or use StructName(field = value)",
+    },
+    "RUN141": {
+        "name": "RunTime Error",
+        "message": "positional argument cannot follow named argument",
+        "hint": "Put every positional argument before the named ones",
+    },
+    "RUN142": {
+        "name": "RunTime Error",
+        "message": "function '{func_name}' has no parameter named '{param}'",
+        "hint": "Check the parameter names in the function definition",
+    },
+    "RUN143": {
+        "name": "RunTime Error",
+        "message": "multiple values for argument '{param}'",
+        "hint": "Pass each argument once, either positionally or by name",
+    },
+    "RUN144": {
+        "name": "RunTime Error",
+        "message": "struct '{struct_name}' has no field named '{field}'",
+        "hint": "Check the field names in the struct definition",
+    },
     # ==================== ASSIGNMENT ERRORS ====================
     "ASN001": {
         "name": "Uncaught Assignment Error",
@@ -868,12 +894,12 @@ ERROR_CATALOG = {
     "CMP002": {
         "name": "Comparison Syntax Error",
         "message": "Unexpected type for 'and' operation",
-        "hint": "Both operands must be Boolean types",
+        "hint": "Both operands must be Bool types",
     },
     "CMP003": {
         "name": "Comparison Syntax Error",
         "message": "Unexpected type for 'or' operation",
-        "hint": "Both operands must be Boolean types",
+        "hint": "Both operands must be Bool types",
     },
     # ==================== IMPORT ERRORS ====================
     "IMP001": {

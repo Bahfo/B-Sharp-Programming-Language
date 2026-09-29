@@ -59,6 +59,23 @@ TOKEN_MACRO = "MACRO"
 # Ellipsis
 TOKEN_ELLIPSIS = "ELLIPSIS"
 
+# Type Keywords
+# The single source of truth for the names a program may write as a type
+# annotation (`var x: Number`). Every entry is also listed in KEYWORDS below,
+# so the lexer already recognizes it; `resolve_type()` accepts exactly these
+# names (plus one or more `[]` suffixes for the array-capable ones).
+TYPE_KEYWORDS = [
+    "Bool",
+    "Number",
+    "String",
+    "Empty",
+    "Inf",
+    "NaN",
+    "List",
+    "Function",
+    "Tuple",
+]
+
 # All Keywords
 KEYWORDS = [
     "do",
@@ -97,6 +114,8 @@ KEYWORDS = [
     "__extern",
     "continue",
     "function",
+    "Function",
+    "Tuple",
 ]
 
 # Predefined Language Special Keywords

@@ -253,9 +253,14 @@ class FunctionDefNode:
 
 
 class CallNode:
-    def __init__(self, node_to_call, arg_nodes, pos_end=None):
+    def __init__(self, node_to_call, arg_nodes, arg_names=None, pos_end=None):
         self.node_to_call = node_to_call
         self.arg_nodes = arg_nodes
+        # Parallel to arg_nodes: the `name` token of a `name = value`
+        # argument, or None when the argument is positional.
+        self.arg_names = (
+            arg_names if arg_names is not None else [None] * len(arg_nodes)
+        )
 
         self.pos_start = self.node_to_call.pos_start
         self.pos_end = (
