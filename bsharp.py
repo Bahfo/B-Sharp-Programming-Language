@@ -19,6 +19,10 @@ def run_source(file_name, source_text, context=None, measure_time=False):
     """
     start_time = time.perf_counter()
 
+    # Tolerate a UTF-8 BOM so BOM-prefixed files parse cleanly.
+    if source_text.startswith("\ufeff"):
+        source_text = source_text[1:]
+
     if context is None:
         context = Context("<main>")
         register_builtins(context)
@@ -34,7 +38,10 @@ def run_source(file_name, source_text, context=None, measure_time=False):
     interpreter = Interpreter()
     result = interpreter.visit(frontend_res.ast_root, context)
     if result.error:
-        result.error.phase = "runtime"
+        # Errors may already carry a phase (e.g. module-load failures);
+        # only default to runtime when none was set.
+        if not getattr(result.error, "phase", None):
+            result.error.phase = "runtime"
         return None, result.error, None
 
     elapsed_time = (time.perf_counter() - start_time) if measure_time else None
@@ -54,8 +61,11 @@ def run_file(file_path, measure_time=False):
         sys.exit(1)
 
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8-sig") as f:
             source_text = f.read()
+    except UnicodeDecodeError:
+        print(f"Error reading file '{file_path}': not valid UTF-8 text.")
+        sys.exit(2)
     except Exception as e:
         print(f"Error reading file '{file_path}': {e}")
         sys.exit(1)

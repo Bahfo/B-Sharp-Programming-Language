@@ -223,6 +223,8 @@ class Interpreter:
             )
 
         if error:
+            error.pos_start = node.pos_start
+            error.pos_end = node.pos_end
             return res.failure(error)
         else:
             result = round_result(result, node_cfg)
@@ -990,7 +992,7 @@ class Interpreter:
                         {"property": _property, "struct_name": obj.struct_name},
                     )
                 )
-            return res.success(field_val.set_context(context).set_pos(*pos))
+            return res.success(field_val.set_pos(*pos))
 
         # Typed arrays must be checked before base Array/List
         if isinstance(obj, NumberArray):
@@ -1054,9 +1056,7 @@ class Interpreter:
             element, err = obj.get_at(i, node.pos_start, node.pos_end)
             if err:
                 return res.failure(err)
-            return res.success(
-                element.set_context(context).set_pos(node.pos_start, node.pos_end)
-            )
+            return res.success(element.set_pos(node.pos_start, node.pos_end))
 
         if isinstance(obj, (List, Array)):
             i, err = self._require_int(index, node)
@@ -1075,9 +1075,7 @@ class Interpreter:
                 )
 
             element = obj.list_of_elements[i]
-            return res.success(
-                element.set_context(context).set_pos(node.pos_start, node.pos_end)
-            )
+            return res.success(element.set_pos(node.pos_start, node.pos_end))
 
         if isinstance(obj, String):
             i, err = self._require_int(index, node)
@@ -1161,9 +1159,7 @@ class Interpreter:
             _, err = container.assign_at(i, value)
             if err:
                 return res.failure(err)
-            return res.success(
-                value.set_context(context).set_pos(node.pos_start, node.pos_end)
-            )
+            return res.success(value.set_pos(node.pos_start, node.pos_end))
 
         if isinstance(container, String):
             return res.failure(
@@ -1358,28 +1354,28 @@ class Interpreter:
             return self.loaded_modules[file_path]
 
         if not os.path.exists(file_path):
-            res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    "RUN016",
-                    {"file_path": file_path},
-                )
+            err = RunTimeError(
+                node.pos_start,
+                node.pos_end,
+                "RUN016",
+                {"file_path": file_path},
             )
+            err.phase = "frontend"
+            res.failure(err)
             return None
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, "r", encoding="utf-8-sig") as f:
                 script = f.read()
         except Exception as e:
-            res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    "RUN017",
-                    {"file_path": file_path},
-                )
+            err = RunTimeError(
+                node.pos_start,
+                node.pos_end,
+                "RUN017",
+                {"file_path": file_path},
             )
+            err.phase = "frontend"
+            res.failure(err)
             return None
 
         from B_Sharp.lexer import Lexer
@@ -1387,18 +1383,13 @@ class Interpreter:
         lexer = Lexer(file_path, script)
         tokens, lexer_error = lexer.tokenize()
         if lexer_error:
-            res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    "RUN018",
-                    {"file_path": file_path},
-                )
-            )
+            lexer_error.phase = "frontend"
+            res.failure(lexer_error)
             return None
 
         tokens, module_cfg, macro_error = preprocess_pragmas(tokens, file_path)
         if macro_error:
+            macro_error.phase = "frontend"
             res.failure(macro_error)
             return None
 
@@ -1406,23 +1397,17 @@ class Interpreter:
         try:
             ast = module_parser.parser()
         except ParseDepthExceeded:
-            ast = ParserResults().failure(
-                B_SharpSyntaxError(
-                    tokens[-1].pos_start,
-                    tokens[-1].pos_end,
-                    "RUN027",
-                    {"file_path": file_path},
-                )
+            depth_err = B_SharpSyntaxError(
+                tokens[-1].pos_start,
+                tokens[-1].pos_end,
+                "RUN027",
+                {"file_path": file_path},
             )
+            depth_err.phase = "frontend"
+            ast = ParserResults().failure(depth_err)
         if ast.error:
-            res.failure(
-                RunTimeError(
-                    node.pos_start,
-                    node.pos_end,
-                    "RUN019",
-                    {"file_path": file_path},
-                )
-            )
+            ast.error.phase = "frontend"
+            res.failure(ast.error)
             return None
 
         # The module gets its own isolated root scope: it can neither see

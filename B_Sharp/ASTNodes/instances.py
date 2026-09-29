@@ -11,6 +11,8 @@ import math
 import re
 import sys
 
+MAX_AUTO_GROW_INDEX = 1_000_000
+
 
 class Value:
     """
@@ -449,9 +451,15 @@ class String(Value):
 
     def addition(self, other):
         if isinstance(other, String):
-            return String(self.value + other.value), None
+            try:
+                return String(self.value + other.value), None
+            except MemoryError:
+                return None, BSharpMathError(self.pos_start, self.pos_end)
         elif isinstance(other, (Number, Boolean)):
-            return String(self.value + str(other)), None
+            try:
+                return String(self.value + str(other)), None
+            except MemoryError:
+                return None, BSharpMathError(self.pos_start, self.pos_end)
         return self._op_error("addition")
 
     def multiplication(self, other):
@@ -464,8 +472,8 @@ class String(Value):
                 )
             try:
                 return String(self.value * other.value), None
-            except OverflowError:
-                # Repeat count too large to represent (MTH001).
+            except (OverflowError, MemoryError):
+                # Repeat count/result too large to represent (MTH001).
                 return None, BSharpMathError(self.pos_start, self.pos_end)
         return None, RunTimeError(
             self.pos_start,
@@ -797,6 +805,13 @@ class List(Value):
             # validate element type if this is a typed Array (overridden in Array)
             self.list_of_elements[i] = element
             return None, None
+        if i > MAX_AUTO_GROW_INDEX:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                "RUN110",
+                {"index": index, "length": n},
+            )
         # dynamic growth: extend with none (Empty) up to i, then append
         while len(self.list_of_elements) < i:
             self.list_of_elements.append(
@@ -1205,6 +1220,13 @@ class Array(List):
         if i < n:
             self.list_of_elements[i] = element
             return None, None
+        if i > MAX_AUTO_GROW_INDEX:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                "RUN110",
+                {"index": index, "length": n},
+            )
 
         # dynamic growth: pad with type-default values (depth 1) or
         # fresh typed rows (depth >= 2, so the shape stays consistent)
@@ -1875,9 +1897,27 @@ class StructInstance(Value):
         self.set_context()
 
     def get_field(self, name, pos_start=None, pos_end=None):
+        if name not in self.environment.variables:
+            if pos_start is None:
+                pos_start, pos_end = self.pos_start, self.pos_end
+            return None, AssignmentError(
+                pos_start,
+                pos_end,
+                "ASN003",
+                {"name": name},
+            )
         return self.environment.get(name, pos_start, pos_end)
 
     def set_field(self, name, value, pos_start=None, pos_end=None):
+        if name not in self.environment.variables:
+            if pos_start is None:
+                pos_start, pos_end = self.pos_start, self.pos_end
+            return None, AssignmentError(
+                pos_start,
+                pos_end,
+                "ASN002",
+                {"name": name},
+            )
         return self.environment.assign(name, value, pos_start, pos_end)
 
     def __repr__(self):
