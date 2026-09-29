@@ -1,0 +1,95 @@
+// (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved.
+
+// Standard Mathematical Library used within the B-Sharp Programming
+// Language. This file of the library provides mathematical real 
+// valued  functions. In addition to constant real values. The file 
+// is licensed, as the library, under the LGPL license in hopes that 
+// it will be useful  or helpful for other people to use and take 
+// examples of.
+
+/* BSharp (or simply B#) is a multi-endpoints programming language 
+that can be interpreted, compiled, and transpiled into C++ and Dlang.
+It features high presicion mathematical computation functions and
+algorithms in addition to a very flexable and dynamic typing methods.
+B-Sharp is strong for mathematical computations, graphics computations,
+graphical user interface applications, and even server applications 
+thanks to its very large standard library. It also comes with built-in
+support for machine and deep learning algorithms, in addition to other
+useful built-in language modules such as a very rich regular experssions
+engine, and a powerful file-system operations module. */
+
+/* This file matches EX-Standards for B-Sharp: EX99 Standards */
+
+// This file was first written by Bahaa Nofal 29/Sept/2026
+
+module mathreal.bsharp
+
+!pragma enforce         // Enforce types across this file
+!pragma optimize        // Optimization algorithms invoked
+
+// BSHARP_IMPORT_LIBS
+using "Compiler/bits.bsharp"            // Bits Operations
+using "Compiler/heads.bsharp"           // Header Definitions
+using "Compiler/optimize.bsharp"        // Optimization Algorithms
+using "Compiler/algorithms.bsharp"      // Other Compiler Algorithms
+using "Alogirthms/datatypes.bsharp"     // Additional Datatypes
+using "Algorithms/algorithms.bsharp"    // Data Algorithms
+using "Algorithms/statictypes.bsharp"   // Static Types Definitions
+
+// Useful high precision mathematical constants
+const M_Euler      : Number = 2.71828182845904523536 // e
+const M_Log2E      : Number = 1.44269504088896340735 // log2(2)
+const M_Log10E     : Number = 0.43429448190325182765 // log10(e)
+const M_LN2l       : Number = 0.69314718055994530941 // ln 2
+const M_LN10l      : Number = 2.30258509299404568401 // ln 10
+const M_PIl        : Number = 3.14159265358979323846 // Pi
+const M_PI_2l      : Number = 1.57079632679489661923 // Pi/2
+const M_PI_4l      : Number = 0.78539816339744830961 // Pi/4
+const M_1_PIl      : Number = 0.31830988618379067153 // 1/Pi
+const M_2_PIl      : Number = 0.63661977236758134307 // 2/Pi
+const M_2_SQRTPIl  : Number = 1.12837916709551257389 // 2/sqrt(Pi)
+const M_SQRT2l     : Number = 1.41421356237309504880 // sqrt(2)
+const M_SQRT1_2l   : Number = 0.70710678118654752440 // sqrt(0.5)
+const M_TAU        : Number = 6.28318530717958647692 // Tau
+const M_SQRT3l     : Number = 1.73205080756887729352 // sqrt(3)
+const M_SQRT5l     : Number = 2.23606797749978969640 // sqrt(5)
+const M_PHIl       : Number = 1.61803398874989484820 // golden ratio
+const M_SIGMAl     : Number = 2.41421356237309504880 // silver ratio
+const M_CUBIC2l    : Number = 1.25992104989487316476 // cubicrt(2)
+const M_CUBIC3l    : Number = 1.44224957030740838232 // cubicrt(3)
+const M_SPR_GLDNl  : Number = 1.46557123187676802665 // supergolden
+const M_BESEL      : Number = 1.64493406684822643647 // Basel
+const M_Elr_CONST  : Number = 0.57721566490153286060 // Euler const
+const M_OMEGA      : Number = 0.56714329040978387299 // Omega const
+const M_LPLACE_LMT : Number = 0.66274341934918158097 // Laplace
+const M_GAUSS_CNST : Number = 0.83462684167407318628 // Gauss const
+const M_CAHEN_CNST : Number = 0.64341054628833802618 // Cahen const
+const M_GLDN_ANGL  : Number = 2.39996322972865332223 // Golden angle
+const M_TRIBONACCI : Number = 1.83928675521416113255 // Tribonacci
+const M_TWIN_PRINE : Number = 0.66016181584686957392 // Twin primes
+const M_PLSTC_RAT  : Number = 1.32471795724474602596 // Plastic ratio
+const M_MAGIC_ANGL : Number = 0.95531661812450927816 // Magic angle
+const M_ARTIN_CNST : Number = 0.37395581361920228805 // Artin const
+const M_PRIMT_CNST : Number = 0.41468250985111166024 // Prime const
+
+// BEGIN DECLARATIONS
+!define EXTERN_C            __extern("C")
+!define EXTERN_D            __extern("D")
+!define EXTERN_PYTHON       __extern("PY")
+!define EXTERN_CPLSPLS      __extern("CPP")
+!define EXTERN_FORTRAN      __extern("F90")
+
+// The following abstraction layer happens only on GNU/LINUX
+[#ifver] __GNU_LINUX
+
+[#endif]
+
+// The following abstraction layer happens only on NT_KERNEL
+[#ifver] __NT_KERNEL
+
+[#endif]
+
+// The following abstraction layer happens only on UNX_DARWIN
+[#ifver] __DARWIN
+
+[#endif]

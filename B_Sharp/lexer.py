@@ -143,7 +143,7 @@ class Lexer:
         if identifier == "":
             return None, B_SharpSyntaxError(bang_pos, self.pos, "SYN068")
 
-        if identifier in possible_macros:
+        if identifier in MACROS:
             return Token(TOKEN_MACRO, identifier, pos_start, self.pos), None
         else:
             return None, B_SharpSyntaxError(

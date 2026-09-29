@@ -94,14 +94,23 @@ KEYWORDS = [
     "return",
     "struct",
     "pragma",
+    "__extern",
     "continue",
     "function",
 ]
 
+# Predefined Language Special Keywords
+SPECIAL_MACRO_KEYWORDS = [
+    "__GNU_LINUX",
+    "__NT_KERNEL",
+    "__DARWIN",
+    "__LINE__",
+    "__FILE__",
+]
+
 # All Caller Macros Types
-possible_macros = [
+MACROS = [
     "pragma",
-    "error",
     "panic",
     "allow",
     "remember",

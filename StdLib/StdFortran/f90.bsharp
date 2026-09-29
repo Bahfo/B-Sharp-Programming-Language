@@ -1,0 +1,32 @@
+// (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved.
+
+// Standard Fortran-90 Interface used within the B-Sharp Programming
+// Language. This file of the library provides ease-of-access to methods
+// declared within StdFortran. The file is licensed, as the library, 
+// under the LGPL license in hopes that it will be useful  or helpful 
+// for other people to use and take examples of.
+
+/* BSharp (or simply B#) is a multi-endpoints programming language 
+that can be interpreted, compiled, and transpiled into C++ and Dlang.
+It features high presicion mathematical computation functions and
+algorithms in addition to a very flexable and dynamic typing methods.
+B-Sharp is strong for mathematical computations, graphics computations,
+graphical user interface applications, and even server applications 
+thanks to its very large standard library. It also comes with built-in
+support for machine and deep learning algorithms, in addition to other
+useful built-in language modules such as a very rich regular experssions
+engine, and a powerful file-system operations module. */
+
+/* This file matches EX-Standards for B-Sharp: EX99 Standards */
+
+// This file was first written by Bahaa Nofal 29/Sept/2026
+
+module f90.bsharp
+
+!pragma enforce         // Enforce types across this file
+!pragma optimize        // Optimization algorithms invoked
+
+// BSHARP_IMPORT_LIBS
+using "Compiler/optimize.bsharp"        // Optimization Algorithms
+using "Alogirthms/datatypes.bsharp"     // Additional Datatypes
+using "Algorithms/algorithms.bsharp"    // Data Algorithms

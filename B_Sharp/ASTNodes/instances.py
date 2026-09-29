@@ -168,17 +168,27 @@ class Number(Value):
 
     def addition(self, other):
         if isinstance(other, Number):
-            return Number(self.value + other.value), None
+            try:
+                return Number(self.value + other.value), None
+            except OverflowError:
+                # Huge exact int mixed with float cannot be represented.
+                return None, BSharpMathError(self.pos_start, self.pos_end)
         return self._op_error("addition")
 
     def subtraction(self, other):
         if isinstance(other, Number):
-            return Number(self.value - other.value), None
+            try:
+                return Number(self.value - other.value), None
+            except OverflowError:
+                return None, BSharpMathError(self.pos_start, self.pos_end)
         return self._op_error("subtraction")
 
     def multiplication(self, other):
         if isinstance(other, Number):
-            return Number(self.value * other.value), None
+            try:
+                return Number(self.value * other.value), None
+            except OverflowError:
+                return None, BSharpMathError(self.pos_start, self.pos_end)
         if isinstance(other, (List, Array)):
             # Scalar-vector multiplication works in both directions.
             return other._reversed_multiplication(self)
@@ -192,7 +202,11 @@ class Number(Value):
                     self.pos_end,
                     "RUN100",
                 )
-            return Number(self.value / other.value), None
+            try:
+                return Number(self.value / other.value), None
+            except OverflowError:
+                # int/int result too large for a float (MTH001).
+                return None, BSharpMathError(self.pos_start, self.pos_end)
         return self._op_error("division")
 
     def integer_division(self, other):
@@ -448,7 +462,11 @@ class String(Value):
                     self.pos_end,
                     "RUN107",
                 )
-            return String(self.value * other.value), None
+            try:
+                return String(self.value * other.value), None
+            except OverflowError:
+                # Repeat count too large to represent (MTH001).
+                return None, BSharpMathError(self.pos_start, self.pos_end)
         return None, RunTimeError(
             self.pos_start,
             self.pos_end,

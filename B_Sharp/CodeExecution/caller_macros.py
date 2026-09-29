@@ -1,6 +1,5 @@
 # (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved.
 # The source code of B_Sharp Programming Language.
-# (Simple Abstracted Syntax Language)
 # The code is guarded and licensed under the GPLv3 License.
 # --------------------------------------------------------------
 # Module: caller_macros.py: Per-file configuration driven by
@@ -19,28 +18,29 @@ from B_Sharp.tokens import (
 )
 from B_Sharp.Errors.errors import B_SharpSyntaxError
 
-POSSIBLE_MACROS = ("pragma",)
+MACROS = ("pragma",)
 DIRECTIVE_ARGS = {
     "enforce": None,
     "precision": "number",
 }
 
 MIN_PRECISION = 0
-MAX_PRECISION = 12
+MAX_PRECISION = 18
 REPL_FILE_NAME = "<stdin>"
 
 
 @dataclass(frozen=True)
 class FileConfig:
     """
-    Settings collected from the leading `!pragma` lines of one file.
+    Settings collected from the leading caller macros.
 
-    Each source file owns its own config: an importer's pragmas never
+    Each source file owns its own config: an importer's macros never
     affect an imported module, and vice-versa.
     """
 
     enforce_types: bool = False
     precision: Optional[int] = None
+    optimize: bool = False
 
 
 DEFAULT_CONFIG = FileConfig()
