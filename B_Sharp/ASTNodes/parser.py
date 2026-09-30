@@ -9,9 +9,12 @@ import sys
 
 from B_Sharp.tokens import *
 from B_Sharp.Errors.errors import *
-from B_Sharp.ASTNodes.instances import *
 from B_Sharp.ASTNodes.nodes import *
+from B_Sharp.ASTNodes.instances import *
 from B_Sharp.builtins import BuiltinFunction, register_builtins
+from B_Sharp.CodeExecution.__predefined import (
+    __match_macro_to_os as match_macro_to_os,
+)
 from B_Sharp.CodeExecution.caller_macros import FileConfig, DEFAULT_CONFIG
 
 MAX_PARSE_DEPTH = 350
@@ -29,11 +32,14 @@ _VALID_TYPES_MESSAGE = (
 
 
 class ParseDepthExceeded(Exception):
-    """Internal signal: source nesting exceeded MAX_PARSE_DEPTH."""
+    """
+    Internal signal: source nesting exceeded MAX_PARSE_DEPTH.
+    """
 
 
 def _with_recursion_headroom(fn):
-    """Runs fn with a temporarily raised Python recursion limit.
+    """
+    Runs fn with a temporarily raised Python recursion limit.
 
     The limit is only raised on the outermost call and restored afterwards,
     so the process-global setting is never permanently mutated.
@@ -242,6 +248,9 @@ class Parser:
         elif tok.type == TOKEN_KEYWORD and tok.value == "inf":
             return self._infinity_value()
 
+        elif tok.type == TOKEN_PREPROC and tok.value == "ifver":
+            return self._check_version()
+
         return res.failure(
             B_SharpSyntaxError(
                 tok.pos_start,
@@ -249,6 +258,63 @@ class Parser:
                 "SYN007",
             )
         )
+
+    def _check_version(self):
+        res = ParserResults()
+        pos_start = self.current_token.pos_start.copy()
+
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type != TOKEN_PREDEFINED:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN007",
+                )
+            )
+
+        macro_tok = self.current_token
+        res.register_forward()
+        self.forward()
+
+        matched = match_macro_to_os(macro_tok.value)
+
+        if matched:
+            body = res.register(self.statements())
+            if res.error:
+                return res
+
+            if (
+                self.current_token.type == TOKEN_PREPROC
+                and self.current_token.value == "endif"
+            ):
+                res.register_forward()
+                self.forward()
+
+            return res.success(body)
+        else:
+            while not (
+                self.current_token.type == TOKEN_PREPROC
+                and self.current_token.value == "endif"
+            ):
+                if self.current_token.type == TOKEN_EOF:
+                    return res.failure(
+                        B_SharpSyntaxError(
+                            pos_start,
+                            self.current_token.pos_end,
+                            "SYN034",
+                        )
+                    )
+                res.register_forward()
+                self.forward()
+
+            # Consume [#endif]
+            res.register_forward()
+            self.forward()
+
+            return res.success(StatementsNode([]))
 
     def _not_a_number(self):
         res = ParserResults()
@@ -1044,6 +1110,9 @@ class Parser:
             TryCatchNode(pos_start, final_pos_end, body_node, catch_nodes)
         )
 
+    def _pass(self):
+        print("Hi")
+
     def statement(self):
         res = ParserResults()
 
@@ -1055,6 +1124,19 @@ class Parser:
                     self.current_token.pos_start,
                     self.current_token.pos_end,
                     "SYN069",
+                )
+            )
+
+        if self.current_token.type == TOKEN_PREPROC:
+            if self.current_token.value == "ifver":
+                return self._check_version()
+            elif self.current_token.value == "ifdef":
+                return self._pass()
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN034",
                 )
             )
 
@@ -1102,7 +1184,6 @@ class Parser:
         if self.current_token.type in (TOKEN_INC, TOKEN_DEC):
             return self.increment_or_decrement()
 
-        # Check for identifier actions: assignment or postfix i++ / i--
         if self.current_token.type == TOKEN_IDENTIFIER and self.token_index + 1 < len(
             self.tokens
         ):
@@ -1117,8 +1198,6 @@ class Parser:
                     return res
                 return res.success(VariableReassignNode(name_tok, value_node))
 
-        # Dynamic index assignment: e.g. a[0] = 5, a[0][1] = 5, obj.prop[0] = 5
-        # Speculative parse of call chain then check for '='
         saved_index = self.token_index
         saved_token = self.current_token
         saved_depth = self.depth
@@ -1158,6 +1237,12 @@ class Parser:
         if self.current_token.type in (TOKEN_EOF, TOKEN_RCURLY):
             return res.success(StatementsNode([]))
 
+        if (
+            self.current_token.type == TOKEN_PREPROC
+            and self.current_token.value == "endif"
+        ):
+            return res.success(StatementsNode([]))
+
         stmt = res.register(self.statement())
         if res.error:
             return res
@@ -1171,6 +1256,14 @@ class Parser:
                 newline_count += 1
 
             if self.current_token.type in (TOKEN_EOF, TOKEN_RCURLY):
+                break
+
+            # `[#endif]` closes an enclosing `[#ifver]` block; leave it
+            # for _check_version() to consume.
+            if (
+                self.current_token.type == TOKEN_PREPROC
+                and self.current_token.value == "endif"
+            ):
                 break
 
             if newline_count == 0:

@@ -110,7 +110,12 @@ class Lexer:
             identifier += self.current_char
             self.forward()
 
-        token_type = TOKEN_KEYWORD if identifier in KEYWORDS else TOKEN_IDENTIFIER
+        if identifier in KEYWORDS:
+            token_type = TOKEN_KEYWORD
+        elif identifier in SPECIAL_MACRO_KEYWORDS:
+            token_type = TOKEN_PREDEFINED
+        else:
+            token_type = TOKEN_IDENTIFIER
 
         # Returning the new token
         return Token(token_type, identifier, pos_start, self.pos)
@@ -143,8 +148,26 @@ class Lexer:
         if identifier == "":
             return None, B_SharpSyntaxError(bang_pos, self.pos, "SYN068")
 
-        if identifier in MACROS:
+        if identifier in CALLER_MACROS:
             return Token(TOKEN_MACRO, identifier, pos_start, self.pos), None
+        else:
+            return None, B_SharpSyntaxError(
+                pos_start, self.pos, "SYN074", {"name": identifier}
+            )
+
+    def check_predefined_macros(self, bang_pos):
+        pos_start = self.pos.copy()
+        identifier = ""
+
+        while self.current_char is not None and self.current_char in LETTERS_DIGITS:
+            identifier += self.current_char
+            self.forward()
+
+        if identifier == "":
+            return None, B_SharpSyntaxError(bang_pos, self.pos, "SYN068")
+
+        if identifier in PREDEFINED_MACROS:
+            return Token(TOKEN_PREPROC, identifier, pos_start, self.pos), None
         else:
             return None, B_SharpSyntaxError(
                 pos_start, self.pos, "SYN074", {"name": identifier}
@@ -377,9 +400,22 @@ class Lexer:
                 tokens.append(self.make_token_greater_than())
             elif self.current_char == "<":
                 tokens.append(self.make_token_less_than())
-            elif self.current_char == "[":
-                tokens.append(Token(TOKEN_LBRACKET, pos_start=self.pos))
-                self.forward()
+            elif self.current_char == "[":  # [#ifver], [#define], [#endif]
+                if self.peek() == "#":
+                    self.forward()
+                    current_pos = self.pos.copy()
+                    self.forward()
+
+                    token, error = self.check_predefined_macros(current_pos)
+                    if error:
+                        return [], error
+                    if token:
+                        tokens.append(token)
+                    if self.current_char == "]":
+                        self.forward()
+                else:
+                    tokens.append(Token(TOKEN_LBRACKET, pos_start=self.pos))
+                    self.forward()
             elif self.current_char == "]":
                 tokens.append(Token(TOKEN_RBRACKET, pos_start=self.pos))
                 self.forward()

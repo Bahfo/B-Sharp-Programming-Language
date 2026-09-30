@@ -28,13 +28,13 @@ module mathreal.bsharp
 !pragma optimize        // Optimization algorithms invoked
 
 // BSHARP_IMPORT_LIBS
-using "Compiler/bits.bsharp"            // Bits Operations
-using "Compiler/heads.bsharp"           // Header Definitions
-using "Compiler/optimize.bsharp"        // Optimization Algorithms
-using "Compiler/algorithms.bsharp"      // Other Compiler Algorithms
-using "Alogirthms/datatypes.bsharp"     // Additional Datatypes
-using "Algorithms/algorithms.bsharp"    // Data Algorithms
-using "Algorithms/statictypes.bsharp"   // Static Types Definitions
+// using "Compiler/bits.bsharp"            // Bits Operations
+// using "Compiler/heads.bsharp"           // Header Definitions
+// using "Compiler/optimize.bsharp"        // Optimization Algorithms
+// using "Compiler/algorithms.bsharp"      // Other Compiler Algorithms
+// using "Alogirthms/datatypes.bsharp"     // Additional Datatypes
+// using "Algorithms/algorithms.bsharp"    // Data Algorithms
+// using "Algorithms/statictypes.bsharp"   // Static Types Definitions
 
 // Useful high precision mathematical constants
 const M_Euler      : Number = 2.71828182845904523536 // e
@@ -73,11 +73,11 @@ const M_ARTIN_CNST : Number = 0.37395581361920228805 // Artin const
 const M_PRIMT_CNST : Number = 0.41468250985111166024 // Prime const
 
 // BEGIN DECLARATIONS
-!define EXTERN_C            __extern("C")
-!define EXTERN_D            __extern("D")
-!define EXTERN_PYTHON       __extern("PY")
-!define EXTERN_CPLSPLS      __extern("CPP")
-!define EXTERN_FORTRAN      __extern("F90")
+// !define EXTERN_C            __extern("C")
+// !define EXTERN_D            __extern("D")
+// !define EXTERN_PYTHON       __extern("PY")
+// !define EXTERN_CPLSPLS      __extern("CPP")
+// !define EXTERN_FORTRAN      __extern("F90")
 
 // The following abstraction layer happens only on GNU/LINUX
 [#ifver] __GNU_LINUX

@@ -56,24 +56,21 @@ TOKEN_DOTDOT = "TOKEN_DOTDOT"
 TOKEN_BANG = "BANG"
 # Macros
 TOKEN_MACRO = "MACRO"
+TOKEN_PREPROC = "PREPROC"
+TOKEN_PREDEFINED = "PREDEFINED"
 # Ellipsis
 TOKEN_ELLIPSIS = "ELLIPSIS"
 
-# Type Keywords
-# The single source of truth for the names a program may write as a type
-# annotation (`var x: Number`). Every entry is also listed in KEYWORDS below,
-# so the lexer already recognizes it; `resolve_type()` accepts exactly these
-# names (plus one or more `[]` suffixes for the array-capable ones).
 TYPE_KEYWORDS = [
-    "Bool",
-    "Number",
-    "String",
-    "Empty",
     "Inf",
     "NaN",
     "List",
-    "Function",
+    "Bool",
+    "Empty",
     "Tuple",
+    "Number",
+    "String",
+    "Function",
 ]
 
 # All Keywords
@@ -106,6 +103,7 @@ KEYWORDS = [
     "const",
     "while",
     "Empty",
+    "Tuple",
     "Number",
     "String",
     "return",
@@ -115,7 +113,6 @@ KEYWORDS = [
     "continue",
     "function",
     "Function",
-    "Tuple",
 ]
 
 # Predefined Language Special Keywords
@@ -123,16 +120,21 @@ SPECIAL_MACRO_KEYWORDS = [
     "__GNU_LINUX",
     "__NT_KERNEL",
     "__DARWIN",
-    "__LINE__",
-    "__FILE__",
 ]
 
 # All Caller Macros Types
-MACROS = [
+CALLER_MACROS = [
     "pragma",
     "panic",
     "allow",
     "remember",
+]
+
+PREDEFINED_MACROS = [
+    "ifdef",
+    "ifver",
+    "endif",
+    "define",
 ]
 
 # Colors

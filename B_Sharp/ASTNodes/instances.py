@@ -5,6 +5,7 @@
 # Module: instances.py: All B_Sharp datatypes and environment
 # needed-to-define keyword instances (functions, variables, etc.).
 
+from __future__ import annotations
 from B_Sharp.Errors.errors import *
 from B_Sharp.tokens import TYPE_KEYWORDS
 
@@ -13,6 +14,10 @@ import re
 import sys
 
 MAX_AUTO_GROW_INDEX = 1_000_000
+
+_ARRAY_TYPE_RE = re.compile(
+    r"^(?P<base>[A-Za-z_][A-Za-z0-9_]*)(?:\[\])+$",
+)
 
 
 class Value:
@@ -443,7 +448,23 @@ class Boolean(Value):
 
 
 class String(Value):
-    """ """
+    """
+    A datatype representing a string of characters (String).
+
+    Introduction:\n
+    Strings are atomic datatypes, their usage can be with single quotations or
+    with double quotations and both work.
+
+    Usage:\n
+    To declare a variable of type `String`. Do the following:
+    ```
+    var x = 'Hello'             // Single quotation strings
+    var y : String = "Hi"       // Double quotations, and type declaration
+    ```
+
+    Strings are also associated with `.type,` `.size,` and `.length` properties.
+    The `.length` and `.size` properties are identical.
+    """
 
     def __init__(self, value: str):
         self.value = str(value)
@@ -549,7 +570,7 @@ class Empty(Value):
      - `var x`
      - `var x : Empty`
      - `const x`
-     - `const x : Empty   // Be careful because (x) cannot be changeable after this`
+     - `const x : Empty   // Be careful because (x) cannot be changed after this`
     2. Assigning to (`none`):
      - `var x = none`
      - `var x : Empty = none`
@@ -582,12 +603,18 @@ class Empty(Value):
 
 
 class NaN(Value):
+    """
+    Not A Number (NaN).
+
+    The `nan` keyword is a special keywords with its datatype when applications
+    require a usage of a value that is not a number. Especially mathematics.
+    """
+
     def __init__(self):
         self.set_pos()
         self.set_context()
 
     def is_equal(self, other):
-        # IEEE semantics: NaN is unequal to everything, including itself.
         return Boolean(False), None
 
     def not_equal(self, other):
@@ -601,7 +628,8 @@ class NaN(Value):
 
 
 class Inf(Value):
-    """Signed infinity.
+    """
+    Signed infinity.
 
     The `inf` keyword produces +inf; unary '-' on an infinity flips the
     sign, so -inf exists as a first-class value. Ordering follows IEEE
@@ -620,8 +648,6 @@ class Inf(Value):
         return result
 
     def is_equal(self, other):
-        # Infinities are equal only to another infinity of the SAME sign;
-        # +inf == -inf is false. Any other value simply compares false.
         return Boolean(isinstance(other, Inf) and other.sign == self.sign), None
 
     def not_equal(self, other):
@@ -673,8 +699,6 @@ class List(Value):
             )
         return None
 
-    # ---------- index helpers ----------
-
     def _resolve_insert_index(self, index):
         """Normalizes an insertion index. Valid range covers -len..len."""
         n = len(self.list_of_elements)
@@ -705,14 +729,11 @@ class List(Value):
             )
         return i, None
 
-    # ---------- in-place mutation methods ----------
-
     def push(self, element, index=None):
         """Insert at index (or append when index is omitted). In place."""
         err = self._check_mutable()
         if err:
             return None, err
-        # Full isolation: deep copy nested collections on insertion
         if isinstance(element, (List, Array)):
             element = element.copy()
         if index is None:
@@ -748,7 +769,9 @@ class List(Value):
         return None, None
 
     def delete(self, index):
-        """Remove a single element by index. In place."""
+        """
+        Remove a single element by index. In place.
+        """
         err = self._check_mutable()
         if err:
             return None, err
@@ -759,7 +782,10 @@ class List(Value):
         return None, None
 
     def drop(self, start, end):
-        """Remove slice [start:end] in place; return it as a new List. Clamps like slice `l[s..e]`."""
+        """
+        Remove slice [start:end] in place; return it as a new List.
+        Clamps like slice `l[s..e]`.
+        """
         err = self._check_mutable()
         if err:
             return None, err
@@ -785,7 +811,10 @@ class List(Value):
         return List(deep_removed), None
 
     def assign_at(self, index, element):
-        """Dynamic index assignment: replaces if in bounds, extends if at/past end."""
+        """
+        Dynamic index assignment: replaces if in bounds, extends
+        if at/past end.
+        """
         err = self._check_mutable()
         if err:
             return None, err
@@ -803,7 +832,6 @@ class List(Value):
                 {"index": index, "length": n},
             )
         if i < n:
-            # validate element type if this is a typed Array (overridden in Array)
             self.list_of_elements[i] = element
             return None, None
         if i > MAX_AUTO_GROW_INDEX:
@@ -813,6 +841,7 @@ class List(Value):
                 "RUN110",
                 {"index": index, "length": n},
             )
+
         # dynamic growth: extend with none (Empty) up to i, then append
         while len(self.list_of_elements) < i:
             self.list_of_elements.append(
@@ -826,8 +855,6 @@ class List(Value):
         # However the above does: while len < i: append Empty,
         # then append element -> for i = n+5, we pad 5 empties then element
         return None, None
-
-    # ---------- arithmetic ----------
 
     @staticmethod
     def _element_wise(elements, other, operation):
@@ -883,9 +910,6 @@ class List(Value):
 
     def division(self, other):
         if isinstance(other, Number):
-            # Fix 5: division by zero must be a hard error (math language semantics).
-            # Keep silent refusal for non-numeric element types (e.g. "x" / 2),
-            # but propagate div-by-zero.
             if other.value == 0:
                 return None, RunTimeError(
                     self.pos_start,
@@ -898,7 +922,6 @@ class List(Value):
                 if error:
                     if error.details and "division by zero" in error.details.lower():
                         return None, error
-                    # Silent refusal for type errors (e.g. "x" / 2) preserves size
                     new_elements.append(element)
                 else:
                     new_elements.append(res)
@@ -962,7 +985,8 @@ class List(Value):
 
 
 class Array(List):
-    """Typed array: element type enforced on every mutation.
+    """
+    Typed array: element type enforced on every mutation.
 
     `depth` records how many `[]` levels the annotation declared:
     depth 1 = flat (elements are scalars), depth >= 2 = nested, where
@@ -972,14 +996,12 @@ class Array(List):
     def __init__(self, element_type_class, list_of_elements=None, depth=1):
         self.element_type = element_type_class
         self.depth = depth if depth else 1
-        # Full annotation spelling (e.g. "Number[][]"); None -> computed.
+
         self.type_name = None
         self.set_pos()
         self.set_context()
         self.list_of_elements = list_of_elements if list_of_elements is not None else []
         self.is_const = False
-
-    # Mutations validate the element type first, then behave exactly like a list.
 
     def push(self, element, index=None):
         err = self._validate_element(element)
@@ -1003,18 +1025,21 @@ class Array(List):
         return List.swap(self, element, index)
 
     def _type_spelling(self):
-        """Canonical B# spelling of this array's type, e.g. `Number[][]`.
+        """
+        Canonical B# spelling of this array's type, e.g. `Number[][]`.
 
         Built from the declared element type plus the recorded nesting depth,
-        so a nested array keeps every `[]` level instead of collapsing to the
-        flat spelling, and element types are always spelled the way the
+        so a nested array keeps every `[]` (dimension) level instead of collapsing
+        to the flat spelling, and element types are always spelled the way the
         language spells them (`Bool[]`, never `Boolean[]`).
         """
         base = class_spelling(self.element_type)
         return f"{base}{'[]' * max(1, self.depth)}"
 
     def _make_row(self, elements):
-        """Builds an independent typed row of depth-1 from `elements`."""
+        """
+        Builds an independent typed row of depth-1 from `elements`.
+        """
         if type(self) is Array:
             row = Array(self.element_type, elements, depth=self.depth - 1)
         else:
@@ -1027,7 +1052,8 @@ class Array(List):
         return row
 
     def fresh_row(self):
-        """Empty typed row for index-assign auto-vivification.
+        """
+        Empty typed row for index-assign auto-vivification.
 
         Returns None when depth < 2 (elements are scalars, not rows).
         """
@@ -1036,7 +1062,9 @@ class Array(List):
         return self._make_row([])
 
     def _coerce_row(self, row):
-        """Returns an independent typed copy of a validated row."""
+        """
+        Returns an independent typed copy of a validated row.
+        """
         if (
             isinstance(row, Array)
             and row.element_type is self.element_type
@@ -1047,7 +1075,9 @@ class Array(List):
         return self._make_row(list(src.list_of_elements))
 
     def _prepare_stored(self, element):
-        """Normalizes a validated element before storage (typed rows)."""
+        """
+        Normalizes a validated element before storage (typed rows).
+        """
         if self.depth >= 2 and isinstance(element, List):
             return self._coerce_row(element)
         return element
@@ -1062,7 +1092,6 @@ class Array(List):
         depth = self.depth
         expect = self._type_spelling()
         if isinstance(element, Empty):
-            # V6: only Empty[] may hold none at any level
             if self.element_type is Empty:
                 return None
             return RunTimeError(
@@ -1074,7 +1103,7 @@ class Array(List):
         if level >= depth:
             if isinstance(element, self.element_type):
                 return None
-            # Too deep (a list at leaf level) or wrong scalar type
+
             code = "RUN118" if level == 1 else "RUN117"
             return RunTimeError(
                 self.pos_start,
@@ -1082,7 +1111,7 @@ class Array(List):
                 code,
                 {"expected_type": expect, "actual_type": type_spelling(element)},
             )
-        # Intermediate level: must be a list (a row)
+
         if not isinstance(element, List):
             code = "RUN118" if level == 1 else "RUN117"
             return RunTimeError(
@@ -1235,8 +1264,6 @@ class Array(List):
                 {"index": index, "length": n},
             )
 
-        # dynamic growth: pad with type-default values (depth 1) or
-        # fresh typed rows (depth >= 2, so the shape stays consistent)
         def _default():
             if self.element_type is Number:
                 return (
@@ -1364,6 +1391,43 @@ class Tuple(Value):
         return "(" + ", ".join(repr(e) for e in self.elements) + ")"
 
 
+class TupleTypeSpec:
+    """
+    Parsed constraint behind a Tuple annotation spelling.
+
+    kind is one of:
+      "any"      -> bare `Tuple` (no constraint)
+      "empty"    -> `Tuple()` (exactly zero elements)
+      "hom"      -> `Tuple(T)` (any length, every element is T)
+      "sequence" -> `Tuple(N1 : T1, T2, N2 : T3, ...)`; exact arity is the
+                    sum of the per-slot counts, types are positional.
+                    An uncounted slot counts as exactly one element.
+
+    For "hom" and "sequence", slots is a list of (count, type_spelling)
+    pairs; count is an int, or None for "hom" (unbounded length).
+    """
+
+    def __init__(self, kind, slots=None, spelling=None):
+        self.kind = kind
+        self.slots = slots or []
+        self.spelling = spelling
+
+    def expected_types(self, n):
+        """
+        Flat list of `n` expected element type spellings for a value with
+        `n` elements, or None when `n` itself violates the spec's arity.
+        """
+        if self.kind == "hom":
+            return [self.slots[0][1]] * n
+        flat = []
+        total = 0
+        for count, type_spelling in self.slots:
+            reps = 1 if count is None else count
+            total += reps
+            flat.extend([type_spelling] * reps)
+        return flat if n == total else None
+
+
 class ErrorInstance(Value):
     """
     Support for error catching in B#. This class helps in `try-catch` phases
@@ -1441,7 +1505,7 @@ class BodyScopeContext(Context):
     """
 
     def __init__(self, loop_context, write_to, in_loop=True, in_function=None):
-        # Inherit function flag from the nearest enclosing scope
+
         if in_function is None:
             in_function = bool(
                 getattr(loop_context, "in_function", False)
@@ -1890,13 +1954,9 @@ class Function(Value):
                 )
 
             # Tuple(...) annotations constrain length and element types
-            spelling = (
-                self.return_type_tok.value if self.return_type_tok else None
-            )
+            spelling = self.return_type_tok.value if self.return_type_tok else None
             if spelling and spelling.startswith("Tuple("):
-                return_val, coerce_err = coerce_tuple_elements(
-                    return_val, spelling
-                )
+                return_val, coerce_err = coerce_tuple_elements(return_val, spelling)
                 if coerce_err:
                     return res.failure(coerce_err)
                 spec, _ = parse_tuple_type(spelling)
@@ -2083,8 +2143,13 @@ class StructInstance(Value):
         return f"{self.struct_name} {{ {fields} }}"
 
 
-# Runtime class -> the name B# spells it with. Class names are Python-side
-# detail (`Boolean`), annotations and messages use `Bool`.
+_ARRAY_CLASSES = {
+    Boolean: BooleanArray,
+    Number: NumberArray,
+    String: StringArray,
+    Empty: EmptyArray,
+}
+
 _CLASS_SPELLING = {
     Boolean: "Bool",
     NumberArray: "Number[]",
@@ -2093,20 +2158,6 @@ _CLASS_SPELLING = {
     EmptyArray: "Empty[]",
 }
 
-
-def class_spelling(cls):
-    """B# name of a runtime class (`Bool`, `Number[]`)."""
-    return _CLASS_SPELLING.get(cls, cls.__name__)
-
-
-def type_spelling(value):
-    """B# name of a value's type; typed arrays keep their `[]` depth."""
-    if isinstance(value, Array):
-        return value._type_spelling()
-    return class_spelling(type(value))
-
-
-# Bindings for the type keywords declared in B_Sharp.tokens (TYPE_KEYWORDS).
 _TYPE_CLASSES = {
     "Bool": Boolean,
     "Number": Number,
@@ -2119,24 +2170,29 @@ _TYPE_CLASSES = {
     "Tuple": Tuple,
 }
 
-_ARRAY_TYPE_RE = re.compile(r"^(?P<base>[A-Za-z_][A-Za-z0-9_]*)(?:\[\])+$")
-
-# Element class -> its typed-array class: which types accept `[]` suffixes.
-_ARRAY_CLASSES = {
-    Boolean: BooleanArray,
-    Number: NumberArray,
-    String: StringArray,
-    Empty: EmptyArray,
+ERROR_TYPE_MAP = {
+    "Error": Error,
+    "B_SharpSyntaxError": B_SharpSyntaxError,
+    "RunTimeError": RunTimeError,
+    "AssignmentError": AssignmentError,
+    "ModificationError": ModificationError,
+    "ComparisonError": ComparisonError,
+    "BSharpMathError": BSharpMathError,
+    "ShadowingError": ShadowingError,
 }
 
 
-def resolve_type(name):
-    """Resolves a type-annotation spelling to its class.
+def class_spelling(cls):
+    return _CLASS_SPELLING.get(cls, cls.__name__)
 
-    The keyword list in B_Sharp.tokens owns the spellings; this only binds
-    them to classes. `Number[][]` -> NumberArray, `Bool[][]` -> BooleanArray,
-    `Tuple(...)` spellings -> Tuple. Unknown names return None.
-    """
+
+def type_spelling(value):
+    if isinstance(value, Array):
+        return value._type_spelling()
+    return class_spelling(type(value))
+
+
+def resolve_type(name):
     if not name:
         return None
     if name.startswith("Tuple("):
@@ -2147,12 +2203,10 @@ def resolve_type(name):
     if base not in TYPE_KEYWORDS:
         return None
     cls = _TYPE_CLASSES[base]
-    # Tuple[]/List[]/... are not arrays -> _ARRAY_CLASSES lookup returns None
     return _ARRAY_CLASSES.get(cls) if match else cls
 
 
 def array_depth(name):
-    """Number of `[]` suffixes in an annotation spelling (0 when not an array)."""
     if not name:
         return 0
     match = _ARRAY_TYPE_RE.match(name)
@@ -2161,42 +2215,7 @@ def array_depth(name):
     return (len(name) - len(match.group("base"))) // 2
 
 
-class TupleTypeSpec:
-    """Parsed constraint behind a Tuple annotation spelling.
-
-    kind is one of:
-      "any"      -> bare `Tuple` (no constraint)
-      "empty"    -> `Tuple()` (exactly zero elements)
-      "hom"      -> `Tuple(T)` (any length, every element is T)
-      "sequence" -> `Tuple(N1 : T1, T2, N2 : T3, ...)`; exact arity is the
-                    sum of the per-slot counts, types are positional.
-                    An uncounted slot counts as exactly one element.
-
-    For "hom" and "sequence", slots is a list of (count, type_spelling)
-    pairs; count is an int, or None for "hom" (unbounded length).
-    """
-
-    def __init__(self, kind, slots=None, spelling=None):
-        self.kind = kind
-        self.slots = slots or []
-        self.spelling = spelling
-
-    def expected_types(self, n):
-        """Flat list of `n` expected element type spellings for a value with
-        `n` elements, or None when `n` itself violates the spec's arity."""
-        if self.kind == "hom":
-            return [self.slots[0][1]] * n
-        flat = []
-        total = 0
-        for count, type_spelling in self.slots:
-            reps = 1 if count is None else count
-            total += reps
-            flat.extend([type_spelling] * reps)
-        return flat if n == total else None
-
-
 def _split_top_level(inner):
-    """Splits on commas that are not nested inside parentheses."""
     parts, depth, cur = [], 0, []
     for ch in inner:
         if ch == "(":
@@ -2258,7 +2277,6 @@ def parse_tuple_type(name):
 
 
 def tuple_violation(spec, value):
-    """Returns None when `value` satisfies `spec`, else a short reason string."""
     if spec is None or spec.kind == "any":
         return None
     if not isinstance(value, Tuple):
@@ -2275,8 +2293,6 @@ def tuple_violation(spec, value):
 
     for i, (element, slot) in enumerate(zip(value.elements, slots)):
         if slot.startswith("Tuple("):
-            # Nested tuple annotation: recurse with the inner spec so its
-            # own length/element constraints are enforced too.
             nested_spec, _ = parse_tuple_type(slot)
             nested_reason = tuple_violation(nested_spec, element)
             if nested_reason:
@@ -2289,7 +2305,8 @@ def tuple_violation(spec, value):
 
 
 def coerce_tuple_elements(value, spelling):
-    """Wraps plain List elements into typed arrays when the tuple annotation
+    """
+    Wraps plain List elements into typed arrays when the tuple annotation
     declares array slots (e.g. `Tuple(Number[]) = ([1], [2])`), mirroring how
     `var x : Number[] = [1, 2]` coerces its list literal.
 
@@ -2306,11 +2323,10 @@ def coerce_tuple_elements(value, spelling):
 
     slots = spec.expected_types(len(value.elements))
     if slots is None:
-        return value, None  # length violation is reported by tuple_violation
+        return value, None
 
     for i, (element, slot) in enumerate(zip(value.elements, slots)):
         if slot.startswith("Tuple("):
-            # Nested tuple annotation: recurse into the element
             nested, nested_err = coerce_tuple_elements(element, slot)
             if nested_err:
                 return value, nested_err
@@ -2330,18 +2346,6 @@ def coerce_tuple_elements(value, spelling):
             return value, err
         value.elements[i] = arr
     return value, None
-
-
-ERROR_TYPE_MAP = {
-    "Error": Error,
-    "B_SharpSyntaxError": B_SharpSyntaxError,
-    "RunTimeError": RunTimeError,
-    "AssignmentError": AssignmentError,
-    "ModificationError": ModificationError,
-    "ComparisonError": ComparisonError,
-    "BSharpMathError": BSharpMathError,
-    "ShadowingError": ShadowingError,
-}
 
 
 def _default_for_type(
@@ -2377,8 +2381,6 @@ def _default_for_type(
     if data_type_class is List:
         return _set(List([]))
     if data_type_class is Tuple:
-        # Empty tuple default (mirrors `var x : List;` -> []).
-        # Count/positional annotations fail ASN006 at declaration instead.
         return _set(Tuple())
 
     if issubclass(data_type_class, Array):

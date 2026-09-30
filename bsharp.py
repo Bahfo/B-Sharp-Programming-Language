@@ -1,3 +1,9 @@
+# Main Entrance for the B-Sharp Programming Language
+# Once compiled, the program becomes a standalone executable. In other
+# terms, it can be called as: `bsharp run ...` or `bsharp build ...`
+
+# Written by Bahaa Nofal
+
 import time
 import sys
 import os
@@ -19,7 +25,6 @@ def run_source(file_name, source_text, context=None, measure_time=False):
     """
     start_time = time.perf_counter()
 
-    # Tolerate a UTF-8 BOM so BOM-prefixed files parse cleanly.
     if source_text.startswith("\ufeff"):
         source_text = source_text[1:]
 
@@ -27,19 +32,14 @@ def run_source(file_name, source_text, context=None, measure_time=False):
         context = Context("<main>")
         register_builtins(context)
 
-    # Unified Frontend Call
     frontend_res = parse_source(file_name, source_text)
     if frontend_res.has_error:
-        # Phase marker: frontend (lexer/parser) failures are syntax-level
-        # and exit with code 2; interpreter failures exit with code 1.
         frontend_res.error.phase = "frontend"
         return None, frontend_res.error, None
 
     interpreter = Interpreter()
     result = interpreter.visit(frontend_res.ast_root, context)
     if result.error:
-        # Errors may already carry a phase (e.g. module-load failures);
-        # only default to runtime when none was set.
         if not getattr(result.error, "phase", None):
             result.error.phase = "runtime"
         return None, result.error, None
@@ -76,8 +76,6 @@ def run_file(file_path, measure_time=False):
 
     if error:
         print(error)
-        # Pinned contract: syntax (frontend) errors exit 2, runtime
-        # errors exit 1, success exits 0. Compiled binaries must match.
         sys.exit(2 if getattr(error, "phase", "runtime") == "frontend" else 1)
     elif value is not None and repr(value) != "none":
         print(render_value(value, get_config(file_path)))
@@ -118,13 +116,9 @@ def run_repl():
 
 def print_usage():
     print("Usage:")
-    print("  bsharp                           Start REPL")
-    print("  bsharp <file.bsharp>              Interpret file")
-    print("  bsharp build <file.bsharp> [opts] Compile file to native executable")
-    print("\nCompiler Options:")
-    print("  -o <path>                        Specify output executable path")
-    print("  --emit-llvm                      Emit compiled LLVM IR file (.ll)")
-    print("  --emit-c                         Emit translated C source file (.c)")
+    print("  bsharp                             Start REPL")
+    print("  bsharp run <file.bsharp>           Interpret file")
+    print("  bsharp build <file.bsharp> [opts]  Compile file to native executable")
 
 
 if __name__ == "__main__":

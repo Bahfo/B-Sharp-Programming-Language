@@ -18,7 +18,7 @@ from B_Sharp.tokens import (
 )
 from B_Sharp.Errors.errors import B_SharpSyntaxError
 
-MACROS = ("pragma",)
+CALLER_MACROS = ("pragma",)
 DIRECTIVE_ARGS = {
     "enforce": None,
     "precision": "number",

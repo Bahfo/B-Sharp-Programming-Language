@@ -8,24 +8,13 @@ from typing import Literal
 from platform import system
 
 
-def __match_macro_to_os() -> Literal["__DARWIN", "__NT_KERNEL", "__GNU_LINUX"] | None:
-    """
-    Matches the operating system's version obtained via `system()`
-    to B-Sharp's OS-specific predefined macros.
-
-    Expands to: B-Sharp predefined macros: `__DARWIN`, `__NT_KERNEL`,
-    `__GNU_LINUX`
-    """
-
-    __os_version = system()
-
-    match __os_version:
-        case "Darwin":
-            return "__DARWIN"
-        case "Windows":
-            return "__NT_KERNEL"
-        case "Linux":
-            return "__GNU_LINUX"
+def __match_macro_to_os(macro_os_version_name: str):
+    os_macros = {
+        "__GNU_LINUX": "Linux",
+        "__NT_KERNEL": "Windows",
+        "__DARWIN": "Darwin",
+    }
+    return system() == os_macros.get(macro_os_version_name, macro_os_version_name)
 
 
 def __return_current_line_number() -> int:
