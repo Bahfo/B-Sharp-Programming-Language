@@ -97,10 +97,61 @@ class Lexer:
                 number_str += "e" + exponent_part
                 dot_count = max(dot_count, 1)
 
+        from B_Sharp.typesys import SUFFIX_TO_TYPE
+
+        # Numeric type suffixes: 5i, 5s, 5b, 5L, 1.5f, 5.0D. A suffix letter
+        # only counts when it is not glued to a longer identifier (so `5if`
+        # still lexes as `5` + `if`, and `5for` as `5` + `for`).
+        literal_type = None
+        if (
+            self.current_char is not None
+            and self.current_char in LETTERS_DIGITS
+            and self.current_char.lower() in SUFFIX_TO_TYPE
+        ):
+            suffix = self.current_char.lower()
+            # Peek the character after the suffix letter.
+            peek_index = self.pos.index + 1
+            following = (
+                self.text[peek_index]
+                if peek_index < len(self.text)
+                else None
+            )
+            if following is None or following not in LETTERS_DIGITS:
+                candidate = SUFFIX_TO_TYPE[suffix]
+                if dot_count == 0 and candidate in ("Float", "Double"):
+                    if suffix == "f":
+                        # `5f` is a Float literal holding an integer value.
+                        literal_type = "Float"
+                    elif suffix == "d":
+                        literal_type = "Double"
+                    else:
+                        literal_type = None
+                elif dot_count != 0 and candidate not in ("Float", "Double"):
+                    # Integer suffixes never apply to dotted literals
+                    # (`5.0b` is a syntax error, not Short).
+                    return None, B_SharpSyntaxError(
+                        pos_start,
+                        self.pos,
+                        "SYN083",
+                        {"suffix": self.current_char},
+                    )
+                else:
+                    literal_type = candidate
+                if literal_type is not None:
+                    self.forward()
+
         if dot_count == 0:
-            return Token(TOKEN_INT, int(number_str), pos_start, self.pos), None
+            token = Token(TOKEN_INT, int(number_str), pos_start, self.pos)
+            token.literal_type = (
+                literal_type if literal_type is not None else "Long"
+            )
+            return token, None
         else:
-            return Token(TOKEN_FLOAT, float(number_str), pos_start, self.pos), None
+            token = Token(TOKEN_FLOAT, float(number_str), pos_start, self.pos)
+            token.literal_type = (
+                literal_type if literal_type is not None else "Double"
+            )
+            return token, None
 
     def identifiers(self):
         pos_start = self.pos.copy()
@@ -248,6 +299,53 @@ class Lexer:
 
         self.forward()
         return Token(TOKEN_STRING, string_val, pos_start, self.pos), None
+
+    def charnize(self):
+        """Lexes a single-quoted character literal: exactly one character."""
+        char_val = ""
+        pos_start = self.pos.copy()
+        escape_character = False
+        self.forward()
+
+        escape_characters = {
+            "n": "\n",
+            "t": "\t",
+            "r": "\r",
+            "\\": "\\",
+            '"': '"',
+            "'": "'",
+        }
+
+        while self.current_char is not None and (
+            self.current_char != "'" or escape_character
+        ):
+            if escape_character:
+                char = self.current_char
+                if char in escape_characters:
+                    char_val += escape_characters[char]
+                else:
+                    return None, B_SharpSyntaxError(
+                        pos_start, self.pos, "SYN002", {"char": char}
+                    )
+                escape_character = False
+            else:
+                if self.current_char == "\\":
+                    escape_character = True
+                else:
+                    char_val += self.current_char
+            self.forward()
+
+        if self.current_char != "'":
+            return None, B_SharpSyntaxError(
+                pos_start, self.pos, "SYN003", {"quote_char": "'"}
+            )
+
+        self.forward()
+        if len(char_val) != 1:
+            return None, B_SharpSyntaxError(
+                pos_start, self.pos, "SYN082", {"length": len(char_val)}
+            )
+        return Token(TOKEN_CHAR, char_val, pos_start, self.pos), None
 
     def commentize(self, comment_type: str):
         if comment_type == "single":
@@ -419,8 +517,13 @@ class Lexer:
             elif self.current_char == "]":
                 tokens.append(Token(TOKEN_RBRACKET, pos_start=self.pos))
                 self.forward()
-            elif self.current_char in ('"', "'"):
+            elif self.current_char == '"':
                 token, error = self.stringnize(self.current_char)
+                if error:
+                    return [], error
+                tokens.append(token)
+            elif self.current_char == "'":
+                token, error = self.charnize()
                 if error:
                     return [], error
                 tokens.append(token)

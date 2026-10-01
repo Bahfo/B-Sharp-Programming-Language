@@ -22,12 +22,13 @@ _RECERSION_HEADROOM_LIMIT = 8000
 
 _VALID_TYPES_MESSAGE = (
     "Valid types (uppercase required): "
-    "Bool, Number, String, Empty, List, Inf, NaN, Function, Tuple, "
-    "Number[], String[], Bool[], Empty[]. "
-    "The [] suffix may be repeated for nesting, e.g. Number[][]. "
-    "Tuple annotations: Tuple, Tuple(), Tuple(Number), "
-    "Tuple(4 : Number), Tuple(Number, String), "
-    "Tuple(2 : Number, 3 : String)."
+    "Bool, Short, Single, Integer, Long, Float, Double, Char, String, "
+    "Empty, List, Inf, NaN, Function, Tuple, "
+    "Long[], Double[], String[], Char[], Bool[], Empty[]. "
+    "The [] suffix may be repeated for nesting, e.g. Long[][]. "
+    "Tuple annotations: Tuple, Tuple(), Tuple(Long), "
+    "Tuple(4 : Long), Tuple(Long, String), "
+    "Tuple(2 : Long, 3 : String)."
 )
 
 
@@ -140,11 +141,17 @@ class Parser:
         if tok.type in (TOKEN_INC, TOKEN_DEC):
             return self.increment_or_decrement()
 
-        # Identifier: Var access OR Postfix x++ / x--
+        # Identifier: Var access OR Postfix x++ / x-- OR cast(value, Type)
         elif tok.type == TOKEN_IDENTIFIER:
             var_tok = tok
             res.register_forward()
             self.forward()
+
+            if (
+                var_tok.value == "cast"
+                and self.current_token.type == TOKEN_LPAREN
+            ):
+                return self._cast_expression(res, var_tok)
 
             if self.current_token.type in (TOKEN_INC, TOKEN_DEC):
                 op_tok = self.current_token
@@ -163,6 +170,11 @@ class Parser:
             res.register_forward()
             self.forward()
             return res.success(StringNode(tok))
+
+        elif tok.type == TOKEN_CHAR:
+            res.register_forward()
+            self.forward()
+            return res.success(CharNode(tok))
 
         elif tok.type == TOKEN_LPAREN:
             pos_start = tok.pos_start.copy()
@@ -315,6 +327,80 @@ class Parser:
             self.forward()
 
             return res.success(StatementsNode([]))
+
+    def _cast_expression(self, res, cast_tok):
+        """Parses the `cast(value, Type)` conversion form.
+
+        `cast` is a contextual special form, not a keyword: it is only
+        treated as a conversion when an identifier `cast` is immediately
+        followed by `(`. The second argument must be a scalar type name
+        (Short, Single, Integer, Long, Float, Double, Char, String, Bool).
+        """
+        pos_start = cast_tok.pos_start.copy()
+        res.register_forward()
+        self.forward()  # consume '('
+
+        value_node = res.register(self.expression())
+        if res.error:
+            return res
+
+        if self.current_token.type != TOKEN_COMMA:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN084",
+                    {"reason": "expected ',' between the value and the type"},
+                )
+            )
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type not in (TOKEN_KEYWORD, TOKEN_IDENTIFIER):
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN084",
+                    {"reason": "expected a type name after ','"},
+                )
+            )
+        type_tok = self.current_token
+        res.register_forward()
+        self.forward()
+
+        if resolve_type(type_tok.value) is None:
+            return res.failure(
+                B_SharpSyntaxError(
+                    type_tok.pos_start,
+                    type_tok.pos_end,
+                    "SYN018",
+                    {"type_name": type_tok.value},
+                )
+            )
+        if not is_castable_type(type_tok.value):
+            return res.failure(
+                B_SharpSyntaxError(
+                    type_tok.pos_start,
+                    type_tok.pos_end,
+                    "SYN085",
+                    {"type_name": type_tok.value},
+                )
+            )
+
+        if self.current_token.type != TOKEN_RPAREN:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN084",
+                    {"reason": "expected ')' to close the cast expression"},
+                )
+            )
+        pos_end = self.current_token.pos_end.copy()
+        res.register_forward()
+        self.forward()
+        return res.success(CastNode(value_node, type_tok, pos_start, pos_end))
 
     def _not_a_number(self):
         res = ParserResults()
@@ -655,7 +741,7 @@ class Parser:
 
         Supported forms: Tuple(), Tuple(T), Tuple(N : T), Tuple(T1, T2, ...),
         and any mix of counted/uncounted slots such as
-        Tuple(2 : Number, 3 : String).
+        Tuple(2 : Long, 3 : String).
         On success mutates type_tok.value to the full spelling and returns
         (type_tok, None). The current token must be '('.
         """
@@ -682,7 +768,7 @@ class Parser:
                         "SYN081",
                         {
                             "reason": "expected ':' after the element count, "
-                            "e.g. '4 : Number'"
+                            "e.g. '4 : Long'"
                         },
                     )
                 self.forward()
@@ -727,8 +813,8 @@ class Parser:
     def _parse_array_suffix(self, type_tok):
         """Consumes any number of `[]` suffixes after a type token.
 
-        Returns (modified_token, error). `Number[][]` is valid; a single
-        non-`]` inside a suffix (e.g. `Number[3]`) is SYN013; `List[]`
+        Returns (modified_token, error). `Long[][]` is valid; a single
+        non-`]` inside a suffix (e.g. `Long[3]`) is SYN013; `List[]`
         remains rejected as SYN014.
         """
         while self.current_token.type == TOKEN_LBRACKET:
@@ -751,9 +837,9 @@ class Parser:
 
     def var_decl(self):
         """Parses variable declarations:
-        `var x : Number = 10`
+        `var x : Long = 10`
         `const y = 12`
-        `var x, y, z : Number = 15`
+        `var x, y, z : Long = 15`
         """
         res = ParserResults()
         is_const = self.current_token.value == "const"

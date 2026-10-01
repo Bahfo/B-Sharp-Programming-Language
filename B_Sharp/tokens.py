@@ -43,6 +43,8 @@ TOKEN_LCURLY = "LCURLY"
 TOKEN_RCURLY = "RCURLY"
 # Strings
 TOKEN_STRING = "STRING"
+# Single-character literals ('a')
+TOKEN_CHAR = "CHAR"
 # Lists
 TOKEN_LBRACKET = "LBRACKET"
 TOKEN_RBRACKET = "RBRACKET"
@@ -66,10 +68,16 @@ TYPE_KEYWORDS = [
     "NaN",
     "List",
     "Bool",
+    "Long",
+    "Char",
     "Empty",
     "Tuple",
-    "Number",
+    "Short",
+    "Float",
+    "Single",
+    "Double",
     "String",
+    "Integer",
     "Function",
 ]
 
@@ -96,6 +104,8 @@ KEYWORDS = [
     "none",
     "pass",
     "true",
+    "Char",
+    "Long",
     "false",
     "catch",
     "using",
@@ -104,12 +114,15 @@ KEYWORDS = [
     "while",
     "Empty",
     "Tuple",
-    "Number",
+    "Short",
+    "Float",
+    "Double",
     "String",
+    "Single",
     "return",
     "struct",
     "pragma",
-    "__extern",
+    "Integer",
     "continue",
     "function",
     "Function",

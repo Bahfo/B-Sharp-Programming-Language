@@ -1,5 +1,6 @@
 from B_Sharp.ASTNodes.parser import *
 from B_Sharp.ASTNodes.parser import _with_recursion_headroom
+from B_Sharp import typesys as _typesys
 from B_Sharp.CodeExecution.caller_macros import (
     get_config,
     round_number,
@@ -108,8 +109,70 @@ class Interpreter:
 
     def visit_NumberNode(self, node, context):
         value = round_number(node.token.value, self._cfg(node))
+        literal_type = getattr(node, "literal_type", None) or (
+            "Double" if isinstance(value, float) else "Long"
+        )
         return RunTimeResult().success(
-            Number(value).set_context(context).set_pos(node.pos_start, node.pos_end)
+            NUMERIC_CLASSES[literal_type](value)
+            .set_context(context)
+            .set_pos(node.pos_start, node.pos_end)
+        )
+
+    def _narrow_literal_value(self, value, target_cls, node, context):
+        """Converts a numeric-literal-produced value into a declared numeric
+        type when it converts cleanly (annotation narrowing for
+        reassignment and struct-field stores).
+
+        Returns (converted_value, None), or (None, ASN005 error) when the
+        literal cannot convert (callers fall back to the normal exact-type
+        check, which reports the same error).
+        """
+        payload, reason = _typesys.context_literal(
+            value.value,
+            value.type_name in _typesys.FLOAT_TYPE_NAMES,
+            target_cls.__name__,
+        )
+        if reason is not None:
+            return None, AssignmentError(
+                node.pos_start,
+                node.pos_end,
+                "ASN005",
+                {
+                    "actual_type": type_spelling(value),
+                    "expected_type": class_spelling(target_cls),
+                },
+            )
+        converted = target_cls(payload)
+        converted.set_context(context).set_pos(node.pos_start, node.pos_end)
+        return converted, None
+
+    def _type_numeric_literal(self, num_node, target_name, context, decl_node):
+        """Builds a NumberNode literal directly as the declared numeric type.
+
+        Implements annotation narrowing (`var x : Integer = 5`): an int
+        literal must fit the range, an int literal always converts to a
+        float type, a float literal always converts to a float type, and
+        a float literal converts to an int type only when integral and in
+        range. Anything else is an ASN005 assignment error.
+        """
+        raw = round_number(num_node.token.value, self._cfg(num_node))
+        is_float = num_node.literal_type in _typesys.FLOAT_TYPE_NAMES
+        payload, reason = _typesys.context_literal(raw, is_float, target_name)
+        if reason is not None:
+            return None, AssignmentError(
+                decl_node.pos_start,
+                decl_node.pos_end,
+                "ASN005",
+                {
+                    "actual_type": num_node.literal_type,
+                    "expected_type": target_name,
+                },
+            )
+        return (
+            NUMERIC_CLASSES[target_name](payload)
+            .set_context(context)
+            .set_pos(num_node.pos_start, num_node.pos_end),
+            None,
         )
 
     def visit_BooleanNode(self, node, context):
@@ -184,7 +247,7 @@ class Interpreter:
             if (
                 node_cfg.precision is not None
                 and isinstance(left, String)
-                and isinstance(right, Number)
+                and isinstance(right, NumericValue)
             ):
                 right = String(render_value(right, node_cfg))
             result, error = left.addition(right)
@@ -268,8 +331,12 @@ class Interpreter:
                 # Negating infinity flips its sign instead of falling
                 # through the multiplication path.
                 result, error = operand.negated(), None
-            elif isinstance(operand, (Number, List, Array)):
-                result, error = operand.multiplication(Number(-1))
+            elif isinstance(operand, (NumericValue, List, Array)):
+                if isinstance(operand, NumericValue):
+                    neg_one = type(operand)(-1)
+                else:
+                    neg_one = Long(-1)
+                result, error = operand.multiplication(neg_one)
             else:
                 result, error = None, RunTimeError(
                     node.op_token.pos_start,
@@ -323,6 +390,18 @@ class Interpreter:
                 context,
                 depth=max(1, array_depth(data_type_name)),
             )
+        elif (
+            isinstance(data_type_class, type)
+            and issubclass(data_type_class, NumericValue)
+            and isinstance(node.value, NumberNode)
+        ):
+            # Annotation narrowing: `var x : Integer = 5` types the
+            # literal when it converts cleanly, else ASN005.
+            value, error = self._type_numeric_literal(
+                node.value, data_type_class.__name__, context, node
+            )
+            if error:
+                return res.failure(error)
         else:
             value = res.register(self.visit(node.value, context))
             if res.error:
@@ -375,6 +454,18 @@ class Interpreter:
                 context,
                 depth=max(1, array_depth(data_type_name)),
             )
+        elif (
+            isinstance(data_type_class, type)
+            and issubclass(data_type_class, NumericValue)
+            and isinstance(node.value, NumberNode)
+        ):
+            # Annotation narrowing for whole-value multi-binding
+            # (`var a, b : Integer = 5`).
+            value, error = self._type_numeric_literal(
+                node.value, data_type_class.__name__, context, node
+            )
+            if error:
+                return res.failure(error)
         else:
             value = res.register(self.visit(node.value, context))
             if res.error:
@@ -464,6 +555,22 @@ class Interpreter:
         )
         if err:
             return res.failure(err)
+
+        if (
+            isinstance(declared_type, type)
+            and issubclass(declared_type, NumericValue)
+            and isinstance(node.value, NumberNode)
+            and isinstance(value, NumericValue)
+            and type(value) is not declared_type
+        ):
+            # Annotation narrowing for reassignment (`x = 5` where
+            # `x : Integer`), mirroring declarations. On failure the
+            # assign() below reports the same ASN005.
+            converted, conv_err = self._narrow_literal_value(
+                value, declared_type, node, context
+            )
+            if conv_err is None:
+                value = converted
 
         if (
             declared_type
@@ -556,6 +663,51 @@ class Interpreter:
             .set_pos(node.pos_start, node.pos_end)
         )
 
+    def visit_CharNode(self, node, context):
+        return RunTimeResult().success(
+            Char(node.token.value)
+            .set_context(context)
+            .set_pos(node.pos_start, node.pos_end)
+        )
+
+    def visit_CastNode(self, node, context):
+        res = RunTimeResult()
+        value = res.register(self.visit(node.value_node, context))
+        if res.error:
+            return res
+        target = node.type_tok.value
+        if target == "String":
+            # Strings render with the calling file's config (precision
+            # pragma), exactly like __to_String.
+            if isinstance(value, String):
+                converted = value
+            elif isinstance(value, Char):
+                converted = String(value.value)
+            elif isinstance(value, ErrorInstance):
+                try:
+                    converted = String(
+                        value.error.as_string()
+                        if hasattr(value.error, "as_string")
+                        else str(value)
+                    )
+                except Exception:
+                    converted = String(str(value))
+            else:
+                converted = String(render_value(value, self._cfg(node)))
+            return res.success(
+                converted.set_context(context).set_pos(
+                    node.pos_start, node.pos_end
+                )
+            )
+        converted, error = convert_scalar(
+            value, target, node.pos_start, node.pos_end
+        )
+        if error:
+            return res.failure(error)
+        return res.success(
+            converted.set_context(context).set_pos(node.pos_start, node.pos_end)
+        )
+
     def visit_IncrementNode(self, node, context):
         res = RunTimeResult()
 
@@ -567,7 +719,7 @@ class Interpreter:
         if error:
             return res.failure(error)
 
-        if not isinstance(val, Number):
+        if not isinstance(val, NumericValue) or not val._is_int_kind:
             return res.failure(
                 RunTimeError(
                     node.pos_start,
@@ -576,12 +728,13 @@ class Interpreter:
                 )
             )
 
-        old_num = val.value
+        val_cls = type(val)
+        old_num = int(val.value)
         node_cfg = self._cfg(node)
         new_num = old_num + 1 if node.op_tok.type == TOKEN_INC else old_num - 1
         new_num = round_number(new_num, node_cfg)
         new_val = (
-            Number(new_num).set_context(context).set_pos(node.pos_start, node.pos_end)
+            val_cls(new_num).set_context(context).set_pos(node.pos_start, node.pos_end)
         )
 
         _, assign_err = context.variables.set_pos(node.pos_start, node.pos_end).assign(
@@ -591,7 +744,7 @@ class Interpreter:
             return res.failure(assign_err)
 
         return res.success(
-            Number(round_number(old_num if node.is_postfix else new_num, node_cfg))
+            val_cls(round_number(old_num if node.is_postfix else new_num, node_cfg))
             .set_context(context)
             .set_pos(node.pos_start, node.pos_end)
         )
@@ -871,12 +1024,16 @@ class Interpreter:
 
         args = []
         arg_names = []
+        arg_is_literal = []
         for i, arg_node in enumerate(node.arg_nodes):
             arg_val = res.register(self.visit(arg_node, context))
             if res.error:
                 return res
             args.append(arg_val)
             arg_names.append(node.arg_names[i])
+            # Numeric literal arguments may narrow into declared numeric
+            # parameter / field types (see Function.execute).
+            arg_is_literal.append(isinstance(arg_node, NumberNode))
 
         if isinstance(value_to_call, BuiltinFunction):
             # Builtins declare no parameters, so they take positional
@@ -908,7 +1065,12 @@ class Interpreter:
 
         if isinstance(value_to_call, StructDefinition):
             instance, err = value_to_call.instantiate(
-                self, args, arg_names, node.pos_start, node.pos_end
+                self,
+                args,
+                arg_names,
+                node.pos_start,
+                node.pos_end,
+                arg_is_literal,
             )
             if err:
                 return res.failure(err)
@@ -934,6 +1096,7 @@ class Interpreter:
                     arg_names=arg_names,
                     call_pos_start=node.pos_start,
                     call_pos_end=node.pos_end,
+                    arg_is_literal=arg_is_literal,
                 )
             )
         finally:
@@ -960,6 +1123,14 @@ class Interpreter:
             return_val = res.register(self.visit(node.node_to_return, context))
             if res.error:
                 return res
+            if isinstance(node.node_to_return, NumberNode):
+                # A literal in return position may narrow into a declared
+                # numeric return type (see Function.execute). The value is
+                # freshly built by visit_NumberNode, so marking it is safe.
+                try:
+                    return_val._from_literal = True
+                except AttributeError:
+                    pass
         else:
             return_val = (
                 Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
@@ -1000,7 +1171,7 @@ class Interpreter:
                 size = len(obj.elements)
             else:
                 size = len(obj.list_of_elements)
-            return res.success(Number(size).set_context(context).set_pos(*pos))
+            return res.success(Long(size).set_context(context).set_pos(*pos))
 
         if isinstance(obj, StructInstance):
             field_val, err = obj.get_field(_property, node.pos_start, node.pos_end)
@@ -1025,8 +1196,10 @@ class Interpreter:
             type_name = "List"
         elif isinstance(obj, String):
             type_name = "String"
-        elif isinstance(obj, Number):
-            type_name = "Number"
+        elif isinstance(obj, Char):
+            type_name = "Char"
+        elif isinstance(obj, NumericValue):
+            type_name = obj.type_name
         elif isinstance(obj, Boolean):
             type_name = "Bool"
         elif isinstance(obj, Empty):
@@ -1107,7 +1280,7 @@ class Interpreter:
                     )
                 )
             return res.success(
-                String(obj.value[i])
+                Char(obj.value[i])
                 .set_context(context)
                 .set_pos(node.pos_start, node.pos_end)
             )
@@ -1522,12 +1695,13 @@ class Interpreter:
         )
 
     def _require_int(self, value, node, label="Index"):
-        """Converts a runtime Number to a Python int.
+        """Converts a runtime integer (Short/Single/Integer/Long) to a
+        Python int.
 
-        Booleans and floats are rejected; integers pass through.
-        Returns (int, None) or (None, error).
+        Booleans and floats are rejected; fixed-width integers pass
+        through. Returns (int, None) or (None, error).
         """
-        if not isinstance(value, Number) or isinstance(value.value, float):
+        if not isinstance(value, NumericValue) or not value._is_int_kind:
             return None, RunTimeError(
                 node.pos_start,
                 node.pos_end,
@@ -1794,6 +1968,21 @@ class Interpreter:
                     )
                 )
             prop_name = node.property_name.value
+            declared = obj.field_type(prop_name)
+            if (
+                isinstance(declared, type)
+                and issubclass(declared, NumericValue)
+                and isinstance(node.value, NumberNode)
+                and isinstance(val, NumericValue)
+                and type(val) is not declared
+            ):
+                # Annotation narrowing for struct-field stores
+                # (`p.x = 5` where `x : Integer`).
+                converted, conv_err = self._narrow_literal_value(
+                    val, declared, node, context
+                )
+                if conv_err is None:
+                    val = converted
             assigned_val, err = obj.set_field(
                 prop_name, val, node.pos_start, node.pos_end
             )

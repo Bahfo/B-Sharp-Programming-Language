@@ -25,7 +25,7 @@ DIRECTIVE_ARGS = {
 }
 
 MIN_PRECISION = 0
-MAX_PRECISION = 18
+MAX_PRECISION = 12
 REPL_FILE_NAME = "<stdin>"
 
 
@@ -207,15 +207,19 @@ def round_number(raw, cfg):
 
 
 def round_result(value, cfg):
-    """Round a runtime value tree (Number / List / Array / Tuple) in place."""
+    """Round a runtime value tree (numeric / List / Array / Tuple) in place."""
     if cfg.precision is None:
         return value
 
-    from B_Sharp.ASTNodes.instances import Number, List, Array, Tuple
+    from B_Sharp.ASTNodes.instances import NumericValue, List, Array, Tuple
 
-    if isinstance(value, Number):
+    if isinstance(value, NumericValue):
         if type(value.value) is float:
             value.value = round(value.value, cfg.precision)
+            if value.type_name == "Float":
+                from B_Sharp import typesys as _ts
+
+                value.value = _ts.to_f32(value.value)
         return value
     if isinstance(value, Tuple):
         for idx, element in enumerate(value.elements):
@@ -229,7 +233,7 @@ def round_result(value, cfg):
 
 def render_element(value, cfg):
     """Render one element the way it appears nested inside a list/array."""
-    from B_Sharp.ASTNodes.instances import Number, List, Array, Tuple
+    from B_Sharp.ASTNodes.instances import NumericValue, List, Array, Tuple
 
     if isinstance(value, Tuple):
         inner = ", ".join(render_element(e, cfg) for e in value.elements)
@@ -237,7 +241,7 @@ def render_element(value, cfg):
     if isinstance(value, (List, Array)):
         inner = ", ".join(render_element(e, cfg) for e in value.list_of_elements)
         return f"[{inner}]"
-    if isinstance(value, Number):
+    if isinstance(value, NumericValue):
         if cfg.precision is not None:
             return f"{value.value:.{cfg.precision}f}"
         return repr(value)
@@ -257,12 +261,15 @@ def render_value(value, cfg):
         List,
         Array,
         String,
-        Number,
+        Char,
+        NumericValue,
         Tuple,
         ErrorInstance,
     )
 
     if isinstance(value, String):
+        return value.value
+    if isinstance(value, Char):
         return value.value
     if isinstance(value, ErrorInstance):
         try:
@@ -271,7 +278,7 @@ def render_value(value, cfg):
             return str(value)
         except Exception:
             return str(value)
-    if isinstance(value, Number):
+    if isinstance(value, NumericValue):
         if cfg.precision is not None:
             return f"{value.value:.{cfg.precision}f}"
         return str(value)
