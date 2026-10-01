@@ -4,6 +4,15 @@ import math
 class NumberNode:
     def __init__(self, token):
         self.token = token
+        # LLVM-driven literal type from the lexer (`5` -> Long, `3.14` ->
+        # Double, `5i` -> Integer, `1.5f` -> Float, ...). Defaults are kept
+        # for tokens built without the lexer (e.g. in tests).
+        if getattr(token, "literal_type", None) is not None:
+            self.literal_type = token.literal_type
+        elif getattr(token, "type", None) == "FLOAT":
+            self.literal_type = "Double"
+        else:
+            self.literal_type = "Long"
         self.pos_start = token.pos_start
         self.pos_end = token.pos_end
 
@@ -182,6 +191,31 @@ class StringNode:
 
     def __repr__(self):
         return f"{self.token}"
+
+
+class CharNode:
+    """Node for a single-quoted character literal ('a')."""
+
+    def __init__(self, token):
+        self.token = token
+        self.pos_start = token.pos_start
+        self.pos_end = token.pos_end
+
+    def __repr__(self):
+        return f"{self.token}"
+
+
+class CastNode:
+    """Node for the `cast(value, Type)` conversion form."""
+
+    def __init__(self, value_node, type_tok, pos_start, pos_end):
+        self.value_node = value_node
+        self.type_tok = type_tok
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+    def __repr__(self):
+        return f"cast({self.value_node}, {self.type_tok.value})"
 
 
 class IncrementNode:

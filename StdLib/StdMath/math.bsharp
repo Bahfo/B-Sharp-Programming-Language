@@ -37,40 +37,40 @@ module mathreal.bsharp
 // using "Algorithms/statictypes.bsharp"   // Static Types Definitions
 
 // Useful high precision mathematical constants
-const M_Euler      : Number = 2.71828182845904523536 // e
-const M_Log2E      : Number = 1.44269504088896340735 // log2(2)
-const M_Log10E     : Number = 0.43429448190325182765 // log10(e)
-const M_LN2l       : Number = 0.69314718055994530941 // ln 2
-const M_LN10l      : Number = 2.30258509299404568401 // ln 10
-const M_PIl        : Number = 3.14159265358979323846 // Pi
-const M_PI_2l      : Number = 1.57079632679489661923 // Pi/2
-const M_PI_4l      : Number = 0.78539816339744830961 // Pi/4
-const M_1_PIl      : Number = 0.31830988618379067153 // 1/Pi
-const M_2_PIl      : Number = 0.63661977236758134307 // 2/Pi
-const M_2_SQRTPIl  : Number = 1.12837916709551257389 // 2/sqrt(Pi)
-const M_SQRT2l     : Number = 1.41421356237309504880 // sqrt(2)
-const M_SQRT1_2l   : Number = 0.70710678118654752440 // sqrt(0.5)
-const M_TAU        : Number = 6.28318530717958647692 // Tau
-const M_SQRT3l     : Number = 1.73205080756887729352 // sqrt(3)
-const M_SQRT5l     : Number = 2.23606797749978969640 // sqrt(5)
-const M_PHIl       : Number = 1.61803398874989484820 // golden ratio
-const M_SIGMAl     : Number = 2.41421356237309504880 // silver ratio
-const M_CUBIC2l    : Number = 1.25992104989487316476 // cubicrt(2)
-const M_CUBIC3l    : Number = 1.44224957030740838232 // cubicrt(3)
-const M_SPR_GLDNl  : Number = 1.46557123187676802665 // supergolden
-const M_BESEL      : Number = 1.64493406684822643647 // Basel
-const M_Elr_CONST  : Number = 0.57721566490153286060 // Euler const
-const M_OMEGA      : Number = 0.56714329040978387299 // Omega const
-const M_LPLACE_LMT : Number = 0.66274341934918158097 // Laplace
-const M_GAUSS_CNST : Number = 0.83462684167407318628 // Gauss const
-const M_CAHEN_CNST : Number = 0.64341054628833802618 // Cahen const
-const M_GLDN_ANGL  : Number = 2.39996322972865332223 // Golden angle
-const M_TRIBONACCI : Number = 1.83928675521416113255 // Tribonacci
-const M_TWIN_PRINE : Number = 0.66016181584686957392 // Twin primes
-const M_PLSTC_RAT  : Number = 1.32471795724474602596 // Plastic ratio
-const M_MAGIC_ANGL : Number = 0.95531661812450927816 // Magic angle
-const M_ARTIN_CNST : Number = 0.37395581361920228805 // Artin const
-const M_PRIMT_CNST : Number = 0.41468250985111166024 // Prime const
+const M_Euler      : Double = 2.71828182845904523536 // e
+const M_Log2E      : Double = 1.44269504088896340735 // log2(2)
+const M_Log10E     : Double = 0.43429448190325182765 // log10(e)
+const M_LN2l       : Double = 0.69314718055994530941 // ln 2
+const M_LN10l      : Double = 2.30258509299404568401 // ln 10
+const M_PIl        : Double = 3.14159265358979323846 // Pi
+const M_PI_2l      : Double = 1.57079632679489661923 // Pi/2
+const M_PI_4l      : Double = 0.78539816339744830961 // Pi/4
+const M_1_PIl      : Double = 0.31830988618379067153 // 1/Pi
+const M_2_PIl      : Double = 0.63661977236758134307 // 2/Pi
+const M_2_SQRTPIl  : Double = 1.12837916709551257389 // 2/sqrt(Pi)
+const M_SQRT2l     : Double = 1.41421356237309504880 // sqrt(2)
+const M_SQRT1_2l   : Double = 0.70710678118654752440 // sqrt(0.5)
+const M_TAU        : Double = 6.28318530717958647692 // Tau
+const M_SQRT3l     : Double = 1.73205080756887729352 // sqrt(3)
+const M_SQRT5l     : Double = 2.23606797749978969640 // sqrt(5)
+const M_PHIl       : Double = 1.61803398874989484820 // golden ratio
+const M_SIGMAl     : Double = 2.41421356237309504880 // silver ratio
+const M_CUBIC2l    : Double = 1.25992104989487316476 // cubicrt(2)
+const M_CUBIC3l    : Double = 1.44224957030740838232 // cubicrt(3)
+const M_SPR_GLDNl  : Double = 1.46557123187676802665 // supergolden
+const M_BESEL      : Double = 1.64493406684822643647 // Basel
+const M_Elr_CONST  : Double = 0.57721566490153286060 // Euler const
+const M_OMEGA      : Double = 0.56714329040978387299 // Omega const
+const M_LPLACE_LMT : Double = 0.66274341934918158097 // Laplace
+const M_GAUSS_CNST : Double = 0.83462684167407318628 // Gauss const
+const M_CAHEN_CNST : Double = 0.64341054628833802618 // Cahen const
+const M_GLDN_ANGL  : Double = 2.39996322972865332223 // Golden angle
+const M_TRIBONACCI : Double = 1.83928675521416113255 // Tribonacci
+const M_TWIN_PRINE : Double = 0.66016181584686957392 // Twin primes
+const M_PLSTC_RAT  : Double = 1.32471795724474602596 // Plastic ratio
+const M_MAGIC_ANGL : Double = 0.95531661812450927816 // Magic angle
+const M_ARTIN_CNST : Double = 0.37395581361920228805 // Artin const
+const M_PRIMT_CNST : Double = 0.41468250985111166024 // Prime const
 
 // BEGIN DECLARATIONS
 // !define EXTERN_C            __extern("C")

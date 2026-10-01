@@ -116,12 +116,12 @@ ERROR_CATALOG = {
     "SYN017": {
         "name": "Syntax Error",
         "message": "Expected type identifier after ':'",
-        "hint": "Specify the variable type after the colon (e.g., 'var x: Number')",
+        "hint": "Specify the variable type after the colon (e.g., 'var x: Long')",
     },
     "SYN018": {
         "name": "Syntax Error",
         "message": "Unknown data type '{type_name}'",
-        "hint": "Valid types are: Bool, Number, String, Empty, List, Inf, NaN, Function, Tuple, Number[], String[], Bool[], Empty[]",
+        "hint": "Valid types are: Bool, Short, Single, Integer, Long, Float, Double, Char, String, Empty, List, Inf, NaN, Function, Tuple, Long[], Double[], String[], Char[], Bool[], Empty[]",
     },
     "SYN019": {
         "name": "Syntax Error",
@@ -343,12 +343,12 @@ ERROR_CATALOG = {
     "SYN060": {
         "name": "Syntax Error",
         "message": "Expected parameter name identifier",
-        "hint": "Add a parameter name (e.g., 'fn func(x: Number)')",
+        "hint": "Add a parameter name (e.g., 'fn func(x: Long)')",
     },
     "SYN061": {
         "name": "Syntax Error",
         "message": "Expected type identifier after ':'",
-        "hint": "Specify the parameter type (e.g., 'x: Number')",
+        "hint": "Specify the parameter type (e.g., 'x: Long')",
     },
     "SYN062": {
         "name": "Syntax Error",
@@ -420,12 +420,12 @@ ERROR_CATALOG = {
     "SYN075": {
         "name": "Syntax Error",
         "message": "'!pragma enforce' requires a type annotation for '{var_names}'.",
-        "hint": "Declare variables with an explicit type: 'var x : Number = ...'",
+        "hint": "Declare variables with an explicit type: 'var x : Long = ...'",
     },
     "SYN076": {
         "name": "Syntax Error",
         "message": "'!pragma enforce' requires a type for parameter '{param}' of '{func}'.",
-        "hint": "Declare function parameters with an explicit type: '(value : Number)'",
+        "hint": "Declare function parameters with an explicit type: '(value : Long)'",
     },
     "SYN077": {
         "name": "Syntax Error",
@@ -452,7 +452,27 @@ ERROR_CATALOG = {
     "SYN081": {
         "name": "Syntax Error",
         "message": "Malformed tuple type annotation: {reason}",
-        "hint": "Valid forms: Tuple, Tuple(), Tuple(Number), Tuple(4 : Number), Tuple(Number, String), Tuple(2 : Number, 3 : String)",
+        "hint": "Valid forms: Tuple, Tuple(), Tuple(Long), Tuple(4 : Long), Tuple(Long, String), Tuple(2 : Long, 3 : String)",
+    },
+    "SYN082": {
+        "name": "Syntax Error",
+        "message": "Character literal must hold exactly one character, got {length}",
+        "hint": "Use a single character ('a') or a double-quoted String for longer text",
+    },
+    "SYN083": {
+        "name": "Syntax Error",
+        "message": "Invalid numeric suffix '{suffix}' for this literal",
+        "hint": "Integer suffixes are L, i, s, b (e.g. 5i); float suffixes are f, D (e.g. 1.5f)",
+    },
+    "SYN084": {
+        "name": "Syntax Error",
+        "message": "Malformed cast expression: {reason}",
+        "hint": "Use cast(value, Type), e.g. cast(x, Double)",
+    },
+    "SYN085": {
+        "name": "Syntax Error",
+        "message": "Invalid cast target '{type_name}'",
+        "hint": "cast() targets must be scalar: Short, Single, Integer, Long, Float, Double, Char, String or Bool",
     },
     # ==================== RUNTIME ERRORS ====================
     # Visitor/Operator Errors
@@ -469,7 +489,7 @@ ERROR_CATALOG = {
     "RUN003": {
         "name": "RunTime Error",
         "message": "Unary '-' cannot negate {type_name}",
-        "hint": "Only Number, List, and Inf values can be negated",
+        "hint": "Only numeric, List, and Inf values can be negated",
     },
     "RUN004": {
         "name": "RunTime Error",
@@ -479,8 +499,8 @@ ERROR_CATALOG = {
     # Increment/Decrement Errors
     "RUN005": {
         "name": "RunTime Error",
-        "message": "Increment/decrement operations are only supported on Number types",
-        "hint": "Use ++ or -- only on Number variables",
+        "message": "Increment/decrement operations are only supported on integer types (Short, Single, Integer, Long)",
+        "hint": "Use ++ or -- only on integer variables",
     },
     # Function Call Errors
     "RUN006": {
@@ -576,7 +596,7 @@ ERROR_CATALOG = {
     # Type Errors
     "RUN021": {
         "name": "RunTime Error",
-        "message": "{label} must be an integer Number",
+        "message": "{label} must be an integer (Short, Single, Integer or Long)",
         "hint": "Convert the value to an integer before using it as an index",
     },
     # Method Errors
@@ -637,8 +657,8 @@ ERROR_CATALOG = {
     },
     "RUN102": {
         "name": "RunTime Error",
-        "message": "Unexpected type for non-number types in modulo operation",
-        "hint": "Ensure both operands are Numbers for '~' (modulo) operations",
+        "message": "Unexpected type for non-numeric types in modulo operation",
+        "hint": "Ensure both operands are numeric for '~' (modulo) operations",
     },
     "RUN103": {
         "name": "RunTime Error",
@@ -691,7 +711,7 @@ ERROR_CATALOG = {
     "RUN112": {
         "name": "RunTime Error",
         "message": "Unsupported type '{type_name}' for list multiplication",
-        "hint": "Only Number and List types can be multiplied with lists",
+        "hint": "Only numeric and List types can be multiplied with lists",
     },
     "RUN113": {
         "name": "RunTime Error",
@@ -701,7 +721,7 @@ ERROR_CATALOG = {
     "RUN114": {
         "name": "RunTime Error",
         "message": "Unsupported type '{type_name}' for list division",
-        "hint": "Only Number type can divide a list",
+        "hint": "Only a numeric type can divide a list",
     },
     # Array Validation Errors
     "RUN115": {
@@ -727,7 +747,7 @@ ERROR_CATALOG = {
     "RUN119": {
         "name": "RunTime Error",
         "message": "Unsupported type '{type_name}' for array multiplication",
-        "hint": "Only Number type can multiply with arrays",
+        "hint": "Only numeric types can multiply with arrays",
     },
     "RUN120": {
         "name": "RunTime Error",
@@ -737,7 +757,7 @@ ERROR_CATALOG = {
     "RUN121": {
         "name": "RunTime Error",
         "message": "Unsupported type '{type_name}' for array division",
-        "hint": "Only Number type can divide an array",
+        "hint": "Only numeric types can divide an array",
     },
     # Function Execution Errors
     "RUN122": {
@@ -788,8 +808,8 @@ ERROR_CATALOG = {
     },
     "RUN137": {
         "name": "RunTime Error",
-        "message": "Cannot convert {type_name} to Number",
-        "hint": "Only String and Number types can be converted to Number",
+        "message": "Cannot convert {type_name} to {target_type}",
+        "hint": "Only String, Char, Bool and numeric types can be converted",
     },
     "RUN138": {
         "name": "RunTime Error",

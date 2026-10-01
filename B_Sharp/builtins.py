@@ -85,7 +85,6 @@ def _format(args, context, call_node):
     import re
 
     from B_Sharp.CodeExecution.caller_macros import render_value, get_config
-    from B_Sharp.ASTNodes.instances import Number
 
     if len(args) < 1:
         return None, RunTimeError(None, None, "RUN131")
@@ -97,7 +96,7 @@ def _format(args, context, call_node):
     def _fmt_arg(arg):
         # Preserve historical format() rendering (repr, quoted strings) and
         # only special-case numbers when a precision pragma is active.
-        if cfg.precision is not None and isinstance(arg, Number):
+        if cfg.precision is not None and isinstance(arg, NumericValue):
             return render_value(arg, cfg)
         return str(arg)
 
@@ -142,10 +141,26 @@ def _is_string(args, context, call_node):
     return Boolean(isinstance(args[0], String)), None
 
 
-def _is_number(args, context, call_node):
-    if len(args) != 1:
-        return None, RunTimeError(None, None, "RUN135", {"function_name": "is_Number"})
-    return Boolean(isinstance(args[0], Number)), None
+def _predicate(name, cls):
+    """Builds an `__is_X` type predicate over one runtime class."""
+
+    def _check(args, context, call_node):
+        if len(args) != 1:
+            return None, RunTimeError(None, None, "RUN135", {"function_name": name})
+        return Boolean(isinstance(args[0], cls)), None
+
+    _check.__name__ = name
+    return _check
+
+
+_is_numeric = _predicate("is_Numeric", NumericValue)
+_is_short = _predicate("is_Short", Short)
+_is_single = _predicate("is_Single", Single)
+_is_integer = _predicate("is_Integer", Integer)
+_is_long = _predicate("is_Long", Long)
+_is_float = _predicate("is_Float", Float)
+_is_double = _predicate("is_Double", Double)
+_is_char = _predicate("is_Char", Char)
 
 
 def _is_empty(args, context, call_node):
@@ -160,31 +175,27 @@ def _is_bool(args, context, call_node):
     return Boolean(isinstance(args[0], Boolean)), None
 
 
-def _to_number(args, context, call_node):
-    from B_Sharp.CodeExecution.caller_macros import round_number, get_config
-
+def _convert_to(args, context, call_node, func_name, target):
+    """Shared implementation for `__to_Long` / `__to_Double`."""
     if len(args) != 1:
-        return None, RunTimeError(None, None, "RUN135", {"function_name": "to_Number"})
+        return None, RunTimeError(None, None, "RUN135", {"function_name": func_name})
     val = args[0]
-    cfg = get_config(call_node.pos_start.file_name if call_node else None)
-    if isinstance(val, Number):
+    if target == "Long" and isinstance(val, Long):
         return val, None
-    if isinstance(val, String):
-        s = val.value.strip()
-        try:
-            # Handle scientific notation and floats vs ints
-            low = s.lower()
-            if "." in s or "e" in low:
-                num = float(s)
-                # keep as float (consistent with lexer sci notation)
-                return Number(round_number(num, cfg)), None
-            else:
-                return Number(round_number(int(s), cfg)), None
-        except ValueError:
-            return None, RunTimeError(None, None, "RUN136", {"value": val.value})
-    if isinstance(val, Boolean):
-        return Number(1 if val.value else 0), None
-    return None, RunTimeError(None, None, "RUN137", {"type_name": type_spelling(val)})
+    if target == "Double" and isinstance(val, Double):
+        return val, None
+    converted, error = convert_scalar(val, target)
+    if error:
+        return None, error
+    return converted, None
+
+
+def _to_long(args, context, call_node):
+    return _convert_to(args, context, call_node, "to_Long", "Long")
+
+
+def _to_double(args, context, call_node):
+    return _convert_to(args, context, call_node, "to_Double", "Double")
 
 
 def _to_string(args, context, call_node):
@@ -217,7 +228,7 @@ def _time_(args, context, call_node):
     if len(args) != 0:
         return None, RunTimeError(None, None, "RUN138")
     cfg = get_config(call_node.pos_start.file_name if call_node else None)
-    return Number(round_number(time.time(), cfg))
+    return Double(round_number(time.time(), cfg))
 
 
 BUILTIN_FUNCTIONS = {
@@ -227,10 +238,18 @@ BUILTIN_FUNCTIONS = {
     "__read": _read,
     "__readln": _readln,
     "__is_String": _is_string,
-    "__is_Number": _is_number,
+    "__is_Char": _is_char,
+    "__is_Numeric": _is_numeric,
+    "__is_Short": _is_short,
+    "__is_Single": _is_single,
+    "__is_Integer": _is_integer,
+    "__is_Long": _is_long,
+    "__is_Float": _is_float,
+    "__is_Double": _is_double,
     "__is_Empty": _is_empty,
     "__is_Bool": _is_bool,
-    "__to_Number": _to_number,
+    "__to_Long": _to_long,
+    "__to_Double": _to_double,
     "__to_String": _to_string,
     "__time__": _time_,
 }

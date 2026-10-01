@@ -12,6 +12,9 @@ from B_Sharp.tokens import TYPE_KEYWORDS
 import math
 import re
 import sys
+from fractions import Fraction
+
+from B_Sharp import typesys as _typesys
 
 MAX_AUTO_GROW_INDEX = 1_000_000
 
@@ -26,7 +29,7 @@ class Value:
 
     Provides shared infrastructure (set_pos, set_context) and safe default
     implementations for every operation. Subclasses only override the
-    operations they actually support — undefined operations automatically
+    operations they actually support - undefined operations automatically
     yield a clean RunTimeError instead of crashing the interpreter.
     """
 
@@ -40,8 +43,11 @@ class Value:
         return self
 
     def _to_number(self, other):
+        # Legacy helper kept for the Boolean <-> numeric equality paths:
+        # Booleans coerce to a Long holding 1/0, everything else passes
+        # through untouched.
         if isinstance(other, Boolean):
-            return Number(1 if other.value else 0)
+            return Long(1 if other.value else 0)
         return other
 
     def _op_error(self, op):
@@ -104,149 +110,268 @@ class Value:
         return False
 
 
-def _order_key(value):
-    """Maps a numeric-domain value to a float for ordering comparisons.
+def _compare_numeric(left, right):
+    """Three-way comparison over the numeric domain.
 
-    NaN maps to None (poisoning the comparison to false, per IEEE);
-    signed infinities map to +/-math.inf; Booleans coerce to 0.0/1.0;
-    anything non-numeric returns None so comparisons fall through false.
+    Returns -1/0/1, or None when the operands are unordered (NaN on
+    either side, per IEEE). Mixed int/float pairs compare exactly via
+    Fraction so a 64-bit Long never loses precision against a Double.
+    Booleans coerce to 1/0; signed infinities order beyond every finite
+    value with sign awareness.
     """
-    if isinstance(value, NaN):
+
+    def _key(value):
+        if isinstance(value, NaN):
+            return None
+        if isinstance(value, Inf):
+            return ("inf", value.sign)
+        if isinstance(value, Boolean):
+            return ("int", 1 if value.value else 0)
+        if isinstance(value, NumericValue):
+            if isinstance(value.value, float) and math.isnan(value.value):
+                return None
+            if isinstance(value.value, float) and math.isinf(value.value):
+                return ("inf", 1 if value.value > 0 else -1)
+            if isinstance(value.value, float):
+                return ("frac", Fraction(value.value))
+            return ("int", int(value.value))
+        return ("unknown", None)
+
+    a = _key(left)
+    b = _key(right)
+    if a is None or b is None:
         return None
-    if isinstance(value, Inf):
-        return math.inf * value.sign
-    if isinstance(value, Number):
-        try:
-            return float(value.value)
-        except OverflowError:
-            # Huge exact integers overflow float conversion; they simply
-            # order beyond the finite float range.
-            return math.inf if value.value > 0 else -math.inf
-    if isinstance(value, Boolean):
-        return 1.0 if value.value else 0.0
-    return None
+    if a[0] == "unknown" or b[0] == "unknown":
+        return None
+    if a[0] == "inf" or b[0] == "inf":
+        a_rank = 1 if a[0] == "inf" else 0
+        b_rank = 1 if b[0] == "inf" else 0
+        if a_rank != b_rank:
+            # A finite value always orders below +inf and above -inf.
+            if a_rank:
+                return 1 if a[1] > 0 else -1
+            return -1 if b[1] > 0 else 1
+        if a[1] == b[1]:
+            return 0
+        return -1 if a[1] < b[1] else 1
+    a_val = a[1] if a[0] == "int" else a[1]
+    b_val = b[1] if b[0] == "int" else b[1]
+    if a_val < b_val:
+        return -1
+    if a_val > b_val:
+        return 1
+    return 0
 
 
 def _numeric_order(self, other, operator):
-    """Shared implementation for <, >, <=, >= over numeric operands."""
-    a = _order_key(self)
-    b = _order_key(other)
-    if a is None or b is None:
-        return Boolean(False), None
-    return Boolean(operator(a, b)), None
+    """Shared implementation for <, >, <=, >= over numeric operands.
 
-
-class Number(Value):
+    Callers pass lambdas like `lambda a, b: a < b`; they are applied to
+    the three-way result (-1/0/1) against 0, so every ordering operator
+    behaves correctly.
     """
-    A datatype representing a number value.
+    order = _compare_numeric(self, other)
+    if order is None:
+        return Boolean(False), None
+    return Boolean(operator(order, 0)), None
+
+
+class NumericValue(Value):
+    """
+    Base class for all LLVM-driven numeric values.
+
+    The six concrete types mirror LLVM scalar types exactly:
+    `Short` (i8), `Single` (i16), `Integer` (i32), `Long` (i64),
+    `Float` (float), `Double` (double).
 
     Introduction:\n
-    An atomic data type in B_Sharp that represents a number value. It holds
-    for a number of any real type: integers or floating numbers mainly.
-    Other values may be accepted are doubles. Be careful, because a `Number`
-    datatype is only of a decimal value. Hexadecimals, Octals, and Binary
-    values are not defined here.
+    Fixed-width numeric datatypes. Integer arithmetic wraps with
+    two's-complement semantics (exactly like LLVM's default `add`/`sub`/
+    `mul`); Float results are rounded to IEEE-754 binary32 after every
+    operation. Mixed-type expressions promote dynamically: the wider
+    integer wins, any float beats any integer, and `Long + Float`
+    promotes to `Double`.
 
     Usage:\n
-    `Number` is easy to define. Use one of two: `var` or `const` depending
-    on your needs. Here are some examples:
     ```
-    var x = 5
-    var y = 323.1231
+    var x = 5          // Long (64-bit integer, the default)
+    var y = 323.1231   // Double (64-bit float, the default)
+    var z : Integer = 5
+    var w = 1.5f       // Float literal via the `f` suffix
 
-    const pi = 3.14 // const holds the value without ability to change it
-    const pi_approx = 22/7  // here it also enforces expression evaluation
-    ```
-
-    Datatype declaration is also possible. For example:
-    ```
-    var x : number = 12
-    var y : number = 323 + 23
-
-    const pi : number = 3.14
+    const pi : Double = 3.14
     ```
 
-    However, be careful. Because mixing datatypes results in runtime errors.
+    Assigning a value whose type differs from the declared type is an
+    error unless the right-hand side is a numeric literal that converts
+    cleanly; use `cast(value, Type)` for explicit conversion.
     """
 
-    def __init__(self, value):
-        self.value = value
+    TYPE_NAME = None
+
+    def __init__(self, type_name, value):
+        spec = _typesys.TYPES[type_name]
+        if spec.kind == _typesys.INT:
+            payload = _typesys.wrap_signed(int(value), spec.bits)
+        elif spec.kind == _typesys.FLOAT:
+            payload = float(value)
+            if type_name == "Float":
+                payload = _typesys.to_f32(payload)
+        else:
+            payload = value
+        self.type_name = type_name
+        self.value = payload
         self.set_pos()
         self.set_context()
 
+    @property
+    def _kind(self):
+        return _typesys.TYPES[self.type_name].kind
+
+    @property
+    def _is_int_kind(self):
+        return self._kind == _typesys.INT
+
+    def _payload_is_inf(self):
+        return isinstance(self.value, float) and math.isinf(self.value)
+
+    def _finish(self, target, raw, inputs_have_inf=False):
+        """
+        Boxes a raw Python result into the promoted result type.
+
+        Integers wrap; floats round to binary32 for Float; a newly
+        infinite float result is a math error (MTH001) unless an input
+        was already infinite.
+        """
+        if _typesys.TYPES[target].kind == _typesys.INT:
+            result = _typesys.wrap_signed(raw, _typesys.TYPES[target].bits)
+            return NUMERIC_CLASSES[target](result), None
+        try:
+            result = float(raw)
+        except OverflowError:
+            return None, BSharpMathError(self.pos_start, self.pos_end)
+        if target == "Float":
+            result = _typesys.to_f32(result)
+        if math.isinf(result) and not inputs_have_inf:
+            return None, BSharpMathError(self.pos_start, self.pos_end)
+        return NUMERIC_CLASSES[target](result), None
+
+    def _promote(self, other):
+        return _typesys.promote(self.type_name, other.type_name)
+
     def addition(self, other):
-        if isinstance(other, Number):
-            try:
-                return Number(self.value + other.value), None
-            except OverflowError:
-                # Huge exact int mixed with float cannot be represented.
-                return None, BSharpMathError(self.pos_start, self.pos_end)
-        return self._op_error("addition")
+        if not isinstance(other, NumericValue):
+            return self._op_error("addition")
+        target = self._promote(other)
+        if _typesys.TYPES[target].kind == _typesys.INT:
+            return self._finish(target, int(self.value) + int(other.value))
+        try:
+            raw = float(self.value) + float(other.value)
+        except OverflowError:
+            return None, BSharpMathError(self.pos_start, self.pos_end)
+        return self._finish(
+            target,
+            raw,
+            inputs_have_inf=self._payload_is_inf() or other._payload_is_inf(),
+        )
 
     def subtraction(self, other):
-        if isinstance(other, Number):
-            try:
-                return Number(self.value - other.value), None
-            except OverflowError:
-                return None, BSharpMathError(self.pos_start, self.pos_end)
-        return self._op_error("subtraction")
+        if not isinstance(other, NumericValue):
+            return self._op_error("subtraction")
+        target = self._promote(other)
+        if _typesys.TYPES[target].kind == _typesys.INT:
+            return self._finish(target, int(self.value) - int(other.value))
+        try:
+            raw = float(self.value) - float(other.value)
+        except OverflowError:
+            return None, BSharpMathError(self.pos_start, self.pos_end)
+        return self._finish(
+            target,
+            raw,
+            inputs_have_inf=self._payload_is_inf() or other._payload_is_inf(),
+        )
 
     def multiplication(self, other):
-        if isinstance(other, Number):
+        if isinstance(other, NumericValue):
+            target = self._promote(other)
+            if _typesys.TYPES[target].kind == _typesys.INT:
+                return self._finish(target, int(self.value) * int(other.value))
             try:
-                return Number(self.value * other.value), None
+                raw = float(self.value) * float(other.value)
             except OverflowError:
                 return None, BSharpMathError(self.pos_start, self.pos_end)
+            return self._finish(
+                target,
+                raw,
+                inputs_have_inf=self._payload_is_inf() or other._payload_is_inf(),
+            )
         if isinstance(other, (List, Array)):
             # Scalar-vector multiplication works in both directions.
             return other._reversed_multiplication(self)
         return self._op_error("multiplication")
 
     def division(self, other):
-        if isinstance(other, Number):
-            if other.value == 0:
-                return None, RunTimeError(
-                    self.pos_start,
-                    self.pos_end,
-                    "RUN100",
-                )
-            try:
-                return Number(self.value / other.value), None
-            except OverflowError:
-                # int/int result too large for a float (MTH001).
-                return None, BSharpMathError(self.pos_start, self.pos_end)
-        return self._op_error("division")
+        """
+        / - true division. int / int promotes to Double.
+        """
+        if not isinstance(other, NumericValue):
+            return self._op_error("division")
+        if other.value == 0:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                "RUN100",
+            )
+        target = self._promote(other)
+        if _typesys.TYPES[target].kind == _typesys.INT:
+            target = "Double"
+        try:
+            raw = float(self.value) / float(other.value)
+        except OverflowError:
+            return None, BSharpMathError(self.pos_start, self.pos_end)
+        return self._finish(
+            target,
+            raw,
+            inputs_have_inf=self._payload_is_inf() or other._payload_is_inf(),
+        )
 
     def integer_division(self, other):
-        """'%' — C-style integer division (truncates toward zero)."""
-        if isinstance(other, Number):
-            if not isinstance(self.value, int) or not isinstance(other.value, int):
-                return None, RunTimeError(
-                    self.pos_start,
-                    self.pos_end,
-                    "RUN101",
-                )
-            if other.value == 0:
-                return None, RunTimeError(
-                    self.pos_start,
-                    self.pos_end,
-                    "RUN100",
-                )
-            quotient = abs(self.value) // abs(other.value)
-            if (self.value < 0) != (other.value < 0):
-                quotient = -quotient
-            return Number(quotient), None
-        return self._op_error("division")
+        """
+        '%' - C-style integer division (truncates toward zero, wraps).
+        """
+        if not isinstance(other, NumericValue):
+            return self._op_error("division")
+        if not self._is_int_kind or not other._is_int_kind:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                "RUN101",
+            )
+        if other.value == 0:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                "RUN100",
+            )
+        target = self._promote(other)
+        a, b = int(self.value), int(other.value)
+        quotient = abs(a) // abs(b)
+        if (a < 0) != (b < 0):
+            quotient = -quotient
+        # MIN / -1 wraps back to MIN, like LLVM/tested x86 behavior.
+        return self._finish(target, quotient)
 
     def modulo_division(self, other):
-        """'~' — C-style modulo (result takes the sign of the dividend)."""
-        if not isinstance(other, Number):
+        """
+        '~' C-style modulo (result takes the sign of the dividend).
+        """
+        if not isinstance(other, NumericValue):
             return None, RunTimeError(
                 self.pos_start,
                 self.pos_end,
                 "RUN102",
             )
-        if not isinstance(self.value, int) or not isinstance(other.value, int):
+        if not self._is_int_kind or not other._is_int_kind:
             return None, RunTimeError(
                 self.pos_start,
                 self.pos_end,
@@ -258,88 +383,90 @@ class Number(Value):
                 self.pos_end,
                 "RUN104",
             )
-        remainder = abs(self.value) % abs(other.value)
-        if self.value < 0:
+        target = self._promote(other)
+        a, b = int(self.value), int(other.value)
+        remainder = abs(a) % abs(b)
+        if a < 0:
             remainder = -remainder
-        return Number(remainder), None
-
-    # Above this many result bits, an exact integer power is refused:
-    # it would either not fit any practical use or exhaust memory/CPU.
-    MAX_POWER_RESULT_BITS = 16384
+        return self._finish(target, remainder)
 
     def power(self, power_factor):
-        if isinstance(power_factor, Number):
-            base, exponent = self.value, power_factor.value
-            try:
-                if (
-                    isinstance(base, int)
-                    and isinstance(exponent, int)
-                    and abs(exponent) > 1
-                    and base not in (0, 1, -1)
-                ):
-                    estimated_bits = abs(base).bit_length() * abs(exponent)
-                    if estimated_bits > self.MAX_POWER_RESULT_BITS:
-                        approximate = float(base) ** float(exponent)
-                        if math.isinf(approximate):
-                            return None, BSharpMathError(
-                                self.pos_start,
-                                self.pos_end,
-                            )
-                        # Emit precision loss warning per D3 requirement
-                        try:
-                            warn = PrecisionLossWarning(
-                                self.pos_start,
-                                self.pos_end,
-                                base,
-                                exponent,
-                            )
-                            print(warn, end="", file=sys.stderr)
-                        except Exception:
-                            pass
-                        return Number(approximate), None
-
-                result = base**exponent
-            except (ValueError, OverflowError):
-                return None, BSharpMathError(
-                    self.pos_start,
-                    self.pos_end,
-                )
-            except ZeroDivisionError:
-                return None, RunTimeError(
-                    self.pos_start,
-                    self.pos_end,
-                    "RUN105",
-                )
-            except Exception:
-                return None, RunTimeError(
-                    self.pos_start,
-                    self.pos_end,
-                    "RUN106",
-                )
-            if isinstance(result, complex):
-                return None, RunTimeError(
-                    self.pos_start,
-                    self.pos_end,
-                    "RUN106",
-                )
-            if isinstance(result, float) and math.isinf(result):
-                return None, BSharpMathError(
-                    self.pos_start,
-                    self.pos_end,
-                )
-            return Number(result), None
-        return self._op_error("power")
+        if not isinstance(power_factor, NumericValue):
+            return self._op_error("power")
+        target = self._promote(power_factor)
+        if _typesys.TYPES[target].kind == _typesys.INT:
+            base, exponent = int(self.value), int(power_factor.value)
+            bits = _typesys.TYPES[target].bits
+            if exponent < 0:
+                # Negative integer exponents produce a Double, matching
+                # true-division semantics (2 ^ -1 == 0.5).
+                try:
+                    raw = float(base) ** exponent
+                except ZeroDivisionError:
+                    return None, RunTimeError(
+                        self.pos_start,
+                        self.pos_end,
+                        "RUN105",
+                    )
+                except (ValueError, OverflowError):
+                    return None, BSharpMathError(
+                        self.pos_start,
+                        self.pos_end,
+                    )
+                return self._finish("Double", raw)
+            # Exact modular power: O(log exp), then wrap to the width.
+            return self._finish(target, pow(base, exponent, 1 << bits))
+        try:
+            raw = float(self.value) ** float(power_factor.value)
+        except ZeroDivisionError:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                "RUN105",
+            )
+        except (ValueError, OverflowError):
+            return None, BSharpMathError(
+                self.pos_start,
+                self.pos_end,
+            )
+        except Exception:
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                "RUN106",
+            )
+        if isinstance(raw, complex):
+            return None, RunTimeError(
+                self.pos_start,
+                self.pos_end,
+                "RUN106",
+            )
+        return self._finish(
+            target,
+            raw,
+            inputs_have_inf=self._payload_is_inf() or power_factor._payload_is_inf(),
+        )
 
     def is_equal(self, other):
-        if isinstance(other, (Number, Boolean)):
+        if isinstance(other, (NumericValue, Boolean)):
             other = self._to_number(other)
-            return Boolean(self.value == other.value), None
+            if not isinstance(other, NumericValue):
+                return Boolean(False), None
+            target = self._promote(other)
+            if _typesys.TYPES[target].kind == _typesys.INT:
+                return Boolean(int(self.value) == int(other.value)), None
+            return Boolean(float(self.value) == float(other.value)), None
         return Boolean(False), None
 
     def not_equal(self, other):
-        if isinstance(other, (Number, Boolean)):
+        if isinstance(other, (NumericValue, Boolean)):
             other = self._to_number(other)
-            return Boolean(self.value != other.value), None
+            if not isinstance(other, NumericValue):
+                return Boolean(True), None
+            target = self._promote(other)
+            if _typesys.TYPES[target].kind == _typesys.INT:
+                return Boolean(int(self.value) != int(other.value)), None
+            return Boolean(float(self.value) != float(other.value)), None
         return Boolean(True), None
 
     def less_than(self, other):
@@ -358,10 +485,65 @@ class Number(Value):
         return self.value != 0
 
     def __repr__(self):
-        try:
-            return str(self.value)
-        except ValueError:
-            return "<value too large>"
+        if self.type_name == "Float":
+            return _typesys.f32_repr(self.value)
+        return str(self.value)
+
+
+class Short(NumericValue):
+    """
+    8-bit signed integer (LLVM i8).
+    """
+
+    def __init__(self, value):
+        super().__init__("Short", value)
+
+
+class Single(NumericValue):
+    """
+    16-bit signed integer (LLVM i16).
+    """
+
+    def __init__(self, value):
+        super().__init__("Single", value)
+
+
+class Integer(NumericValue):
+    """
+    32-bit signed integer (LLVM i32).
+    """
+
+    def __init__(self, value):
+        super().__init__("Integer", value)
+
+
+class Long(NumericValue):
+    """
+    64-bit signed integer (LLVM i64). Default type of integer
+    literals.
+    """
+
+    def __init__(self, value):
+        super().__init__("Long", value)
+
+
+class Float(NumericValue):
+    """
+    32-bit floating point (LLVM float). Rounded to binary32
+    per op.
+    """
+
+    def __init__(self, value):
+        super().__init__("Float", value)
+
+
+class Double(NumericValue):
+    """
+    64-bit floating point (LLVM double). Default type of float literals.
+    """
+
+    def __init__(self, value):
+        super().__init__("Double", value)
 
 
 class Boolean(Value):
@@ -394,17 +576,17 @@ class Boolean(Value):
         self.set_context()
 
     def is_equal(self, other):
-        if isinstance(other, (Number, Boolean)):
+        if isinstance(other, (NumericValue, Boolean)):
             other_num = self._to_number(other)
-            my_num = Number(1 if self.value else 0)
-            return Boolean(my_num.value == other_num.value), None
+            my_num = Long(1 if self.value else 0)
+            return my_num.is_equal(other_num)
         return Boolean(False), None
 
     def not_equal(self, other):
-        if isinstance(other, (Number, Boolean)):
+        if isinstance(other, (NumericValue, Boolean)):
             other_num = self._to_number(other)
-            my_num = Number(1 if self.value else 0)
-            return Boolean(my_num.value != other_num.value), None
+            my_num = Long(1 if self.value else 0)
+            return my_num.not_equal(other_num)
         return Boolean(True), None
 
     def less_than(self, other):
@@ -452,18 +634,20 @@ class String(Value):
     A datatype representing a string of characters (String).
 
     Introduction:\n
-    Strings are atomic datatypes, their usage can be with single quotations or
-    with double quotations and both work.
+    Strings are atomic datatypes holding double-quoted text. Single
+    quotation marks always produce a `Char`, never a `String`.
 
     Usage:\n
     To declare a variable of type `String`. Do the following:
     ```
-    var x = 'Hello'             // Single quotation strings
-    var y : String = "Hi"       // Double quotations, and type declaration
+    var x = "Hello"             // Double quotation strings
+    var y : String = "Hi"       // ... and type declaration
+    var c : Char = 'c'          // Single quotation characters
     ```
 
     Strings are also associated with `.type,` `.size,` and `.length` properties.
-    The `.length` and `.size` properties are identical.
+    The `.length` and `.size` properties are identical. Indexing a string
+    yields a `Char`.
     """
 
     def __init__(self, value: str):
@@ -477,7 +661,12 @@ class String(Value):
                 return String(self.value + other.value), None
             except MemoryError:
                 return None, BSharpMathError(self.pos_start, self.pos_end)
-        elif isinstance(other, (Number, Boolean)):
+        elif isinstance(other, Char):
+            try:
+                return String(self.value + other.value), None
+            except MemoryError:
+                return None, BSharpMathError(self.pos_start, self.pos_end)
+        elif isinstance(other, (NumericValue, Boolean)):
             try:
                 return String(self.value + str(other)), None
             except MemoryError:
@@ -485,7 +674,10 @@ class String(Value):
         return self._op_error("addition")
 
     def multiplication(self, other):
-        if isinstance(other, Number) and isinstance(other.value, int):
+        if (
+            isinstance(other, NumericValue)
+            and _typesys.TYPES[other.type_name].kind == _typesys.INT
+        ):
             if other.value < 0:
                 return None, RunTimeError(
                     self.pos_start,
@@ -493,7 +685,7 @@ class String(Value):
                     "RUN107",
                 )
             try:
-                return String(self.value * other.value), None
+                return String(self.value * int(other.value)), None
             except (OverflowError, MemoryError):
                 # Repeat count/result too large to represent (MTH001).
                 return None, BSharpMathError(self.pos_start, self.pos_end)
@@ -541,6 +733,89 @@ class String(Value):
 
     def __repr__(self):
         return f'"{self.value}"'
+
+
+class Char(Value):
+    """
+    A datatype representing a single character (LLVM i8).
+
+    Introduction:\n
+    Chars are atomic datatypes produced by single-quoted literals: `'a'`
+    holds exactly one character. A Char supports equality and ordering
+    against other Chars, and concatenates with Strings and Chars into a
+    `String`. Numeric arithmetic on a Char is an error - convert with
+    `cast(c, Short)` first.
+
+    Usage:\n
+    ```
+    var c = 'a'
+    var s : String = "x" + c     // "xa"
+    var t : String = c + 'b'     // "ab"
+    ```
+    """
+
+    def __init__(self, value: str):
+        text = str(value)
+        self.value = text[0] if text else "\0"
+        self.set_pos()
+        self.set_context()
+
+    def addition(self, other):
+        if isinstance(other, Char):
+            try:
+                return String(self.value + other.value), None
+            except MemoryError:
+                return None, BSharpMathError(self.pos_start, self.pos_end)
+        if isinstance(other, String):
+            try:
+                return String(self.value + other.value), None
+            except MemoryError:
+                return None, BSharpMathError(self.pos_start, self.pos_end)
+        return self._op_error("addition")
+
+    def _reversed_addition(self, other):
+        if isinstance(other, String):
+            try:
+                return String(other.value + self.value), None
+            except MemoryError:
+                return None, BSharpMathError(self.pos_start, self.pos_end)
+        return self._op_error("addition")
+
+    def is_equal(self, other):
+        if isinstance(other, Char):
+            return Boolean(self.value == other.value), None
+        return Boolean(False), None
+
+    def not_equal(self, other):
+        if isinstance(other, Char):
+            return Boolean(self.value != other.value), None
+        return Boolean(True), None
+
+    def less_than(self, other):
+        if isinstance(other, Char):
+            return Boolean(self.value < other.value), None
+        return Boolean(False), None
+
+    def greater_than(self, other):
+        if isinstance(other, Char):
+            return Boolean(self.value > other.value), None
+        return Boolean(False), None
+
+    def less_than_equal(self, other):
+        if isinstance(other, Char):
+            return Boolean(self.value <= other.value), None
+        return Boolean(False), None
+
+    def greater_than_equal(self, other):
+        if isinstance(other, Char):
+            return Boolean(self.value >= other.value), None
+        return Boolean(False), None
+
+    def true_(self):
+        return True
+
+    def __repr__(self):
+        return f"'{self.value}'"
 
 
 class Empty(Value):
@@ -870,7 +1145,7 @@ class List(Value):
         return new_elements
 
     def multiplication(self, other):
-        if isinstance(other, Number):
+        if isinstance(other, NumericValue):
             new_elements = self._element_wise(
                 self.list_of_elements, other, lambda el, o: el.multiplication(o)
             )
@@ -909,7 +1184,7 @@ class List(Value):
         )
 
     def division(self, other):
-        if isinstance(other, Number):
+        if isinstance(other, NumericValue):
             if other.value == 0:
                 return None, RunTimeError(
                     self.pos_start,
@@ -1026,7 +1301,7 @@ class Array(List):
 
     def _type_spelling(self):
         """
-        Canonical B# spelling of this array's type, e.g. `Number[][]`.
+        Canonical B# spelling of this array's type, e.g. `Long[][]`.
 
         Built from the declared element type plus the recorded nesting depth,
         so a nested array keeps every `[]` (dimension) level instead of collapsing
@@ -1137,7 +1412,7 @@ class Array(List):
         return None
 
     def multiplication(self, other):
-        if isinstance(other, (Number, List)):
+        if isinstance(other, (NumericValue, List)):
             elements, error = List.multiplication(self, other)
             if error:
                 return None, error
@@ -1151,7 +1426,7 @@ class Array(List):
         )
 
     def division(self, other):
-        if isinstance(other, Number):
+        if isinstance(other, NumericValue):
             if other.value == 0:
                 return None, RunTimeError(
                     self.pos_start,
@@ -1265,15 +1540,25 @@ class Array(List):
             )
 
         def _default():
-            if self.element_type is Number:
+            if isinstance(self.element_type, type) and issubclass(
+                self.element_type, NumericValue
+            ):
+                # et(0) normalizes: integer zero for int kinds, 0.0 for
+                # Float/Double.
                 return (
-                    Number(0)
+                    self.element_type(0)
                     .set_pos(self.pos_start, self.pos_end)
                     .set_context(self.context)
                 )
             if self.element_type is String:
                 return (
                     String("")
+                    .set_pos(self.pos_start, self.pos_end)
+                    .set_context(self.context)
+                )
+            if self.element_type is Char:
+                return (
+                    Char("\0")
                     .set_pos(self.pos_start, self.pos_end)
                     .set_context(self.context)
                 )
@@ -1317,9 +1602,39 @@ class Array(List):
         return f"{self.list_of_elements}"
 
 
-class NumberArray(Array):
+class ShortArray(Array):
     def __init__(self, list_of_elements=None, depth=1):
-        super().__init__(Number, list_of_elements, depth)
+        super().__init__(Short, list_of_elements, depth)
+
+
+class SingleArray(Array):
+    def __init__(self, list_of_elements=None, depth=1):
+        super().__init__(Single, list_of_elements, depth)
+
+
+class IntegerArray(Array):
+    def __init__(self, list_of_elements=None, depth=1):
+        super().__init__(Integer, list_of_elements, depth)
+
+
+class LongArray(Array):
+    def __init__(self, list_of_elements=None, depth=1):
+        super().__init__(Long, list_of_elements, depth)
+
+
+class FloatArray(Array):
+    def __init__(self, list_of_elements=None, depth=1):
+        super().__init__(Float, list_of_elements, depth)
+
+
+class DoubleArray(Array):
+    def __init__(self, list_of_elements=None, depth=1):
+        super().__init__(Double, list_of_elements, depth)
+
+
+class CharArray(Array):
+    def __init__(self, list_of_elements=None, depth=1):
+        super().__init__(Char, list_of_elements, depth)
 
 
 class StringArray(Array):
@@ -1448,9 +1763,7 @@ class ErrorInstance(Value):
             return String(str(self.error.details))
         if name == "line":
             return (
-                Number(self.error.pos_start.line + 1)
-                if self.error.pos_start
-                else Number(0)
+                Long(self.error.pos_start.line + 1) if self.error.pos_start else Long(0)
             )
         if name == "file":
             return (
@@ -1711,7 +2024,9 @@ class EnvironmentVariable:
         return self.variables[name]["type"], None
 
     def _type_mismatch_error(self, data_type, value, pos_start=None, pos_end=None):
-        """Validates value type against declared variable type."""
+        """
+        Validates value type against declared variable type.
+        """
 
         if pos_start is None:
             pos_start, pos_end = self.pos_start, self.pos_end
@@ -1733,8 +2048,27 @@ class EnvironmentVariable:
                 {"actual_type": val_type_str},
             )
 
-        if isinstance(value, data_type):
+        if isinstance(data_type, type) and issubclass(data_type, NumericValue):
+            # Numeric declarations demand the exact type: a Long value
+            # never satisfies an Integer annotation (promote in math,
+            # error on assign - convert explicitly with `cast`).
+            if type(value) is data_type:
+                # A literal-typed value flowing straight into its
+                # annotation position is consumed here.
+                if getattr(value, "_from_literal", False):
+                    try:
+                        delattr(value, "_from_literal")
+                    except AttributeError:
+                        pass
+                return None
+        elif isinstance(value, data_type):
             return None
+        # A literal marker that reaches a mismatching annotation is stale.
+        if getattr(value, "_from_literal", False):
+            try:
+                delattr(value, "_from_literal")
+            except AttributeError:
+                pass
 
         val_type_str = type_spelling(value)
         return AssignmentError(
@@ -1763,15 +2097,20 @@ class Function(Value):
         self.set_context(parent_context)
         self.set_pos()
 
-    def _bind_arguments(self, args, arg_names, pos_start, pos_end):
-        """Maps call arguments onto the declared parameters.
+    def _bind_arguments(self, args, arg_names, pos_start, pos_end, arg_is_literal=None):
+        """
+        Maps call arguments onto the declared parameters.
 
         Positional arguments fill parameters in declaration order; named
         arguments (`name = value`) may follow them in any order. Returns
-        (bindings, None) on success, or (None, error).
+        (bindings, lit_params, None) on success, or (None, None, error),
+        where lit_params maps each bound parameter name to whether the
+        argument filling it was a numeric literal (for annotation
+        narrowing of `f(5)` against `x : Integer`).
         """
         param_names = [name_tok.value for name_tok, _, _ in self.arg_nodes]
         bindings = {}
+        lit_params = {}
         positional_index = 0
         seen_named = False
 
@@ -1780,17 +2119,21 @@ class Function(Value):
 
             if name_tok is None:
                 if seen_named:
-                    return None, RunTimeError(pos_start, pos_end, "RUN141", {})
+                    return None, None, RunTimeError(pos_start, pos_end, "RUN141", {})
                 if positional_index >= len(param_names):
-                    return None, RunTimeError(
-                        pos_start,
-                        pos_end,
-                        "RUN122",
-                        {
-                            "func_name": self.name,
-                            "expected": len(param_names),
-                            "actual": len(args),
-                        },
+                    return (
+                        None,
+                        None,
+                        RunTimeError(
+                            pos_start,
+                            pos_end,
+                            "RUN122",
+                            {
+                                "func_name": self.name,
+                                "expected": len(param_names),
+                                "actual": len(args),
+                            },
+                        ),
                     )
                 param_name = param_names[positional_index]
                 positional_index += 1
@@ -1798,29 +2141,48 @@ class Function(Value):
             else:
                 seen_named = True
                 if name_tok.value not in param_names:
-                    return None, RunTimeError(
-                        name_tok.pos_start,
-                        name_tok.pos_end,
-                        "RUN142",
-                        {"func_name": self.name, "param": name_tok.value},
+                    return (
+                        None,
+                        None,
+                        RunTimeError(
+                            name_tok.pos_start,
+                            name_tok.pos_end,
+                            "RUN142",
+                            {"func_name": self.name, "param": name_tok.value},
+                        ),
                     )
                 param_name = name_tok.value
                 err_pos_start, err_pos_end = name_tok.pos_start, name_tok.pos_end
 
             if param_name in bindings:
-                return None, RunTimeError(
-                    err_pos_start,
-                    err_pos_end,
-                    "RUN143",
-                    {"param": param_name},
+                return (
+                    None,
+                    None,
+                    RunTimeError(
+                        err_pos_start,
+                        err_pos_end,
+                        "RUN143",
+                        {"param": param_name},
+                    ),
                 )
 
             bindings[param_name] = arg_value
+            lit_params[param_name] = bool(
+                arg_is_literal is not None
+                and i < len(arg_is_literal)
+                and arg_is_literal[i]
+            )
 
-        return bindings, None
+        return bindings, lit_params, None
 
     def execute(
-        self, args, interpreter, arg_names=None, call_pos_start=None, call_pos_end=None
+        self,
+        args,
+        interpreter,
+        arg_names=None,
+        call_pos_start=None,
+        call_pos_end=None,
+        arg_is_literal=None,
     ):
         from B_Sharp.ASTNodes.interpreter import RunTimeResult
 
@@ -1836,8 +2198,8 @@ class Function(Value):
             in_function=True,
         )
 
-        bindings, err = self._bind_arguments(
-            args, arg_names, err_pos_start, err_pos_end
+        bindings, lit_params, err = self._bind_arguments(
+            args, arg_names, err_pos_start, err_pos_end, arg_is_literal
         )
         if err:
             return res.failure(err)
@@ -1864,20 +2226,56 @@ class Function(Value):
             )
 
         for param_name_tok, param_type_tok, param_default in self.arg_nodes:
-            if param_name_tok.value in bindings:
-                arg_value = bindings[param_name_tok.value]
+            pname = param_name_tok.value
+            if pname in bindings:
+                arg_value = bindings[pname]
+                from_literal = bool(lit_params.get(pname, False))
             else:
                 # Parameter was omitted: fall back to its declared default.
                 default_res = interpreter.visit(param_default, exec_context)
                 if default_res.error:
                     return res.failure(default_res.error)
                 arg_value = default_res.value
+                # A literal default (`x : Integer = 5`) narrows like a
+                # literal call argument. The parser only builds NumberNode
+                # defaults for numeric literal text.
+                from B_Sharp.ASTNodes.nodes import NumberNode
+
+                from_literal = isinstance(param_default, NumberNode)
 
             # Full isolation: deep copy List/Array args so caller not mutated
             if isinstance(arg_value, (List, Array)):
                 arg_value = arg_value.copy()
 
             param_type = resolve_type(param_type_tok.value) if param_type_tok else None
+
+            if (
+                isinstance(param_type, type)
+                and issubclass(param_type, NumericValue)
+                and isinstance(arg_value, NumericValue)
+                and from_literal
+            ):
+                payload, reason = _typesys.context_literal(
+                    arg_value.value,
+                    arg_value.type_name in _typesys.FLOAT_TYPE_NAMES,
+                    param_type.__name__,
+                )
+                if reason is None:
+                    arg_value = param_type(payload)
+                    arg_value.set_pos(param_name_tok.pos_start, param_name_tok.pos_end)
+                    arg_value.set_context(exec_context)
+                else:
+                    return res.failure(
+                        AssignmentError(
+                            param_name_tok.pos_start,
+                            param_name_tok.pos_end,
+                            "ASN005",
+                            {
+                                "actual_type": type_spelling(arg_value),
+                                "expected_type": class_spelling(param_type),
+                            },
+                        )
+                    )
 
             if (
                 param_type
@@ -1936,7 +2334,39 @@ class Function(Value):
                     if err:
                         return res.failure(err)
 
-            if not isinstance(return_val, self.return_type) and not (
+            # Literal narrowing: `return 5` inside a function declared
+            # `-> Integer` types the literal when it converts cleanly,
+            # mirroring annotated variable declarations.
+            if (
+                isinstance(self.return_type, type)
+                and issubclass(self.return_type, NumericValue)
+                and isinstance(return_val, NumericValue)
+                and getattr(return_val, "_from_literal", False)
+            ):
+                converted, _reason = _typesys.context_literal(
+                    return_val.value,
+                    return_val.type_name in _typesys.FLOAT_TYPE_NAMES,
+                    self.return_type.__name__,
+                )
+                if _reason is None:
+                    return_val = self.return_type(converted)
+                    return_val.set_pos(err_pos_start, err_pos_end)
+                    return_val.set_context(exec_context)
+            if getattr(return_val, "_from_literal", False):
+                try:
+                    delattr(return_val, "_from_literal")
+                except AttributeError:
+                    pass
+
+            if isinstance(self.return_type, type) and issubclass(
+                self.return_type, NumericValue
+            ):
+                # Numeric returns demand the exact type (promote in math,
+                # error on assign - convert explicitly with `cast`).
+                matches = type(return_val) is self.return_type
+            else:
+                matches = isinstance(return_val, self.return_type)
+            if not matches and not (
                 self.return_type is Empty and isinstance(return_val, Empty)
             ):
                 val_type_str = type_spelling(return_val)
@@ -2013,7 +2443,13 @@ class StructDefinition(Value):
         self.set_pos()
 
     def instantiate(
-        self, interpreter, args=None, arg_names=None, pos_start=None, pos_end=None
+        self,
+        interpreter,
+        args=None,
+        arg_names=None,
+        pos_start=None,
+        pos_end=None,
+        arg_is_literal=None,
     ):
         exec_context = Context(
             display_name=f"<struct {self.name}>", parent=self.parent_context
@@ -2031,6 +2467,7 @@ class StructDefinition(Value):
                 arg_names,
                 pos_start or self.pos_start,
                 pos_end or self.pos_end,
+                arg_is_literal,
             )
             if err:
                 return None, err
@@ -2038,18 +2475,23 @@ class StructDefinition(Value):
         instance = StructInstance(self.name, exec_context.variables)
         return instance, None
 
-    def _bind_fields(self, exec_context, args, arg_names, pos_start, pos_end):
+    def _bind_fields(
+        self, exec_context, args, arg_names, pos_start, pos_end, arg_is_literal=None
+    ):
         """Fills the struct's fields from its constructor arguments.
 
         Positional arguments fill writable fields in declaration order; named
         arguments (`field = value`) may follow them in any order. Fields left
-        unbound keep the value their declaration gave them.
+        unbound keep the value their declaration gave them. Numeric literal
+        arguments narrow into numeric-typed fields, mirroring annotated
+        variable declarations.
         """
         variables = exec_context.variables.variables
         positional_fields = [
             name for name, entry in variables.items() if not entry["is_const"]
         ]
         bindings = {}
+        lit_fields = {}
         positional_index = 0
         seen_named = False
 
@@ -2091,8 +2533,30 @@ class StructDefinition(Value):
                 )
 
             bindings[field_name] = value
+            lit_fields[field_name] = bool(
+                arg_is_literal is not None
+                and i < len(arg_is_literal)
+                and arg_is_literal[i]
+            )
 
         for field_name, value in bindings.items():
+            declared = variables[field_name]["type"]
+            if (
+                lit_fields.get(field_name, False)
+                and isinstance(declared, type)
+                and issubclass(declared, NumericValue)
+                and isinstance(value, NumericValue)
+            ):
+                payload, reason = _typesys.context_literal(
+                    value.value,
+                    value.type_name in _typesys.FLOAT_TYPE_NAMES,
+                    declared.__name__,
+                )
+                if reason is None:
+                    value = declared(payload)
+                    value.set_pos(pos_start, pos_end)
+                    value.set_context(exec_context)
+                # Otherwise the assign() below reports ASN005.
             _, err = exec_context.variables.assign(
                 field_name, value, pos_start, pos_end
             )
@@ -2124,6 +2588,13 @@ class StructInstance(Value):
             )
         return self.environment.get(name, pos_start, pos_end)
 
+    def field_type(self, name):
+        """Declared type class of a struct field (None when unannotated)."""
+        entry = self.environment.variables.get(name)
+        if entry is None:
+            return None
+        return entry.get("type")
+
     def set_field(self, name, value, pos_start=None, pos_end=None):
         if name not in self.environment.variables:
             if pos_start is None:
@@ -2145,14 +2616,26 @@ class StructInstance(Value):
 
 _ARRAY_CLASSES = {
     Boolean: BooleanArray,
-    Number: NumberArray,
+    Short: ShortArray,
+    Single: SingleArray,
+    Integer: IntegerArray,
+    Long: LongArray,
+    Float: FloatArray,
+    Double: DoubleArray,
+    Char: CharArray,
     String: StringArray,
     Empty: EmptyArray,
 }
 
 _CLASS_SPELLING = {
     Boolean: "Bool",
-    NumberArray: "Number[]",
+    ShortArray: "Short[]",
+    SingleArray: "Single[]",
+    IntegerArray: "Integer[]",
+    LongArray: "Long[]",
+    FloatArray: "Float[]",
+    DoubleArray: "Double[]",
+    CharArray: "Char[]",
     StringArray: "String[]",
     BooleanArray: "Bool[]",
     EmptyArray: "Empty[]",
@@ -2160,7 +2643,13 @@ _CLASS_SPELLING = {
 
 _TYPE_CLASSES = {
     "Bool": Boolean,
-    "Number": Number,
+    "Short": Short,
+    "Single": Single,
+    "Integer": Integer,
+    "Long": Long,
+    "Float": Float,
+    "Double": Double,
+    "Char": Char,
     "String": String,
     "Inf": Inf,
     "NaN": NaN,
@@ -2179,6 +2668,15 @@ ERROR_TYPE_MAP = {
     "ComparisonError": ComparisonError,
     "BSharpMathError": BSharpMathError,
     "ShadowingError": ShadowingError,
+}
+
+NUMERIC_CLASSES = {
+    "Short": Short,
+    "Single": Single,
+    "Integer": Integer,
+    "Long": Long,
+    "Float": Float,
+    "Double": Double,
 }
 
 
@@ -2204,6 +2702,11 @@ def resolve_type(name):
         return None
     cls = _TYPE_CLASSES[base]
     return _ARRAY_CLASSES.get(cls) if match else cls
+
+
+def is_castable_type(name):
+    """True when `name` is an allowed `cast(value, Type)` target spelling."""
+    return name in _typesys.CASTABLE_TYPES
 
 
 def array_depth(name):
@@ -2238,9 +2741,9 @@ def parse_tuple_type(name):
       Tuple                          -> any elements
       Tuple()                        -> exactly the empty tuple
       Tuple(T)                       -> any length, every element is T
-      Tuple(4 : Number)              -> exactly 4 Numbers
-      Tuple(Number, String)          -> exactly 2, positional
-      Tuple(2 : Number, 3 : String)  -> 2 Numbers, then 3 Strings
+      Tuple(4 : Long)                -> exactly 4 Longs
+      Tuple(Long, String)            -> exactly 2, positional
+      Tuple(2 : Long, 3 : String)    -> 2 Longs, then 3 Strings
 
     Returns (spec, None) on success, (None, reason) when `name` looks like
     a Tuple(...) annotation but is malformed, and (None, None) when `name`
@@ -2307,8 +2810,8 @@ def tuple_violation(spec, value):
 def coerce_tuple_elements(value, spelling):
     """
     Wraps plain List elements into typed arrays when the tuple annotation
-    declares array slots (e.g. `Tuple(Number[]) = ([1], [2])`), mirroring how
-    `var x : Number[] = [1, 2]` coerces its list literal.
+    declares array slots (e.g. `Tuple(Long[]) = ([1], [2])`), mirroring how
+    `var x : Long[] = [1, 2]` coerces its list literal.
 
     Returns (value, error).
     """
@@ -2366,10 +2869,14 @@ def _default_for_type(
 
     if data_type_class is None:
         return _set(Empty())
-    if data_type_class is Number:
-        return _set(Number(0))
+    if isinstance(data_type_class, type) and issubclass(data_type_class, NumericValue):
+        # data_type_class(0) normalizes: integer zero for int kinds,
+        # 0.0 for Float/Double.
+        return _set(data_type_class(0))
     if data_type_class is String:
         return _set(String(""))
+    if data_type_class is Char:
+        return _set(Char("\0"))
     if data_type_class is Boolean:
         return _set(Boolean(False))
     if data_type_class is Empty:
@@ -2389,6 +2896,114 @@ def _default_for_type(
         except Exception:
             return _set(Empty())
     return _set(Empty())
+
+
+def convert_scalar(value, target_name, pos_start=None, pos_end=None):
+    """
+    Explicit scalar conversion for `cast(value, Type)` and the
+    `__to_Long` / `__to_Double` builtins.
+
+    Numeric conversions follow LLVM semantics (int->int wraps,
+    float->int truncates toward zero then wraps, int->float converts
+    with sitofp rounding). String parsing failures report RUN136;
+    impossible conversions report RUN137.
+
+    Returns (new_value, None) on success or (None, error). String
+    targets are NOT handled here: callers render those with the active
+    per-file config (see `visit_CastNode` / `_to_string`).
+    """
+
+    def _fail(code, ctx):
+        return None, RunTimeError(pos_start, pos_end, code, ctx)
+
+    def _bad_type():
+        return _fail(
+            "RUN137",
+            {"type_name": type_spelling(value), "target_type": target_name},
+        )
+
+    if target_name in _typesys.NUMERIC_TYPE_NAMES:
+        is_float_target = target_name in _typesys.FLOAT_TYPE_NAMES
+        cls = NUMERIC_CLASSES[target_name]
+        if isinstance(value, NumericValue):
+            from_kind = (
+                _typesys.FLOAT if isinstance(value.value, float) else _typesys.INT
+            )
+            payload = _typesys.convert_numeric(value.value, from_kind, target_name)
+            return cls(payload), None
+        if isinstance(value, Boolean):
+            payload = _typesys.convert_numeric(
+                1 if value.value else 0, _typesys.INT, target_name
+            )
+            return cls(payload), None
+        if isinstance(value, Char):
+            payload = _typesys.convert_numeric(
+                ord(value.value), _typesys.INT, target_name
+            )
+            return cls(payload), None
+        if isinstance(value, String):
+            text = value.value.strip()
+            if not is_float_target:
+                try:
+                    number = int(text, 10)
+                except ValueError:
+                    return _fail("RUN136", {"value": value.value})
+                if not _typesys.fits_int(target_name, number):
+                    return _fail("RUN136", {"value": value.value})
+                return cls(number), None
+            try:
+                number = float(text)
+            except ValueError:
+                return _fail("RUN136", {"value": value.value})
+            if target_name == "Float":
+                number = _typesys.to_f32(number)
+            return cls(number), None
+        if isinstance(value, NaN):
+            if is_float_target:
+                number = float("nan")
+                if target_name == "Float":
+                    number = _typesys.to_f32(number)
+                return cls(number), None
+            return _bad_type()
+        if isinstance(value, Inf):
+            if is_float_target:
+                return cls(math.inf * value.sign), None
+            return _bad_type()
+        return _bad_type()
+
+    if target_name == "Char":
+        if isinstance(value, Char):
+            return Char(value.value), None
+        if isinstance(value, String):
+            if len(value.value) == 1:
+                return Char(value.value), None
+            return _bad_type()
+        if isinstance(value, NumericValue) and (
+            _typesys.TYPES[value.type_name].kind == _typesys.INT
+        ):
+            code = int(value.value)
+            if 0 <= code <= 0x10FFFF:
+                return Char(chr(code)), None
+            return _bad_type()
+        return _bad_type()
+
+    if target_name == "Bool":
+        if isinstance(value, Boolean):
+            return Boolean(value.value), None
+        if isinstance(value, NumericValue):
+            return Boolean(value.value != 0), None
+        if isinstance(value, Char):
+            return Boolean(True), None
+        if isinstance(value, String):
+            lowered = value.value.strip().lower()
+            if lowered == "true":
+                return Boolean(True), None
+            if lowered == "false":
+                return Boolean(False), None
+            return _bad_type()
+        return _bad_type()
+
+    return _bad_type()
 
 
 default_for_type = _default_for_type
