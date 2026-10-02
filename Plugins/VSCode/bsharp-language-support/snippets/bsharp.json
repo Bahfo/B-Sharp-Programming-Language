@@ -1,0 +1,452 @@
+{
+  "B# if": {
+    "prefix": "if",
+    "body": ["if ${1:condition} {", "\t${0}", "}"],
+    "description": "B# if statement"
+  },
+  "B# elif": {
+    "prefix": "elif",
+    "body": "elif ${1:condition} {",
+    "description": "B# elif branch"
+  },
+  "B# else": {
+    "prefix": "else",
+    "body": ["else {", "\t${0}", "}"],
+    "description": "B# else branch"
+  },
+  "B# then": {
+    "prefix": "then",
+    "body": "then ${1:statement}",
+    "description": "B# single-line branch: if cond then stmt"
+  },
+  "B# for": {
+    "prefix": "for",
+    "body": ["for (var ${1:i} = ${2:0}; ${1:i} < ${3:n}; ${1:i}++) {", "\t${0}", "}"],
+    "description": "B# C-style for loop"
+  },
+  "B# while": {
+    "prefix": "while",
+    "body": ["while ${1:condition} {", "\t${0}", "}"],
+    "description": "B# while loop"
+  },
+  "B# do..while": {
+    "prefix": "do",
+    "body": ["do {", "\t${0}", "} while (${1:condition})"],
+    "description": "B# do..while loop"
+  },
+  "B# try/catch": {
+    "prefix": "try",
+    "body": ["try {", "\t${1}", "} catch (${2:Error} ${3:e}) {", "\t${0}", "}"],
+    "description": "B# try/catch block"
+  },
+  "B# catch": {
+    "prefix": "catch",
+    "body": ["catch (${1:Error} ${2:e}) {", "\t${0}", "}"],
+    "description": "B# catch handler"
+  },
+  "B# return": {
+    "prefix": "return",
+    "body": "return ${1:value}",
+    "description": "B# return statement"
+  },
+  "B# break": {
+    "prefix": "break",
+    "body": "break",
+    "description": "B# break statement"
+  },
+  "B# continue": {
+    "prefix": "continue",
+    "body": "continue",
+    "description": "B# continue statement"
+  },
+  "B# pass": {
+    "prefix": "pass",
+    "body": "pass",
+    "description": "B# pass (no-op)"
+  },
+  "B# using": {
+    "prefix": "using",
+    "body": "using \"${1:module}\"",
+    "description": "B# import: using \"file\" or using \"file:sym1, sym2\""
+  },
+  "B# var": {
+    "prefix": "var",
+    "body": "var ${1:name} : ${2:Long} = ${0:value}",
+    "description": "B# variable declaration"
+  },
+  "B# const": {
+    "prefix": "const",
+    "body": "const ${1:name} : ${2:Long} = ${0:value}",
+    "description": "B# constant declaration"
+  },
+  "B# struct": {
+    "prefix": "struct",
+    "body": ["struct ${1:Name} {", "\t${0}", "}"],
+    "description": "B# struct definition"
+  },
+  "B# fn": {
+    "prefix": ["fn", "function"],
+    "body": ["fn ${1:name}(${2:params}) -> ${3:Long} {", "\treturn ${0}", "}"],
+    "description": "B# function definition"
+  },
+  "B# and": {
+    "prefix": "and",
+    "body": "and",
+    "description": "B# logical and"
+  },
+  "B# or": {
+    "prefix": "or",
+    "body": "or",
+    "description": "B# logical or"
+  },
+  "B# not": {
+    "prefix": "not",
+    "body": "not ${1:condition}",
+    "description": "B# logical not"
+  },
+  "B# true": {
+    "prefix": "true",
+    "body": "true",
+    "description": "B# boolean literal"
+  },
+  "B# false": {
+    "prefix": "false",
+    "body": "false",
+    "description": "B# boolean literal"
+  },
+  "B# none": {
+    "prefix": "none",
+    "body": "none",
+    "description": "B# null literal"
+  },
+  "B# inf": {
+    "prefix": "inf",
+    "body": "inf",
+    "description": "B# infinity value"
+  },
+  "B# nan": {
+    "prefix": "nan",
+    "body": "nan",
+    "description": "B# not-a-number value"
+  },
+  "B# Bool": {
+    "prefix": "Bool",
+    "body": "Bool",
+    "description": "B# type"
+  },
+  "B# Short": {
+    "prefix": "Short",
+    "body": "Short",
+    "description": "B# type (8-bit int)"
+  },
+  "B# Single": {
+    "prefix": "Single",
+    "body": "Single",
+    "description": "B# type (16-bit int)"
+  },
+  "B# Integer": {
+    "prefix": "Integer",
+    "body": "Integer",
+    "description": "B# type (32-bit int)"
+  },
+  "B# Long": {
+    "prefix": "Long",
+    "body": "Long",
+    "description": "B# type (64-bit int)"
+  },
+  "B# Float": {
+    "prefix": "Float",
+    "body": "Float",
+    "description": "B# type (32-bit float)"
+  },
+  "B# Double": {
+    "prefix": "Double",
+    "body": "Double",
+    "description": "B# type (64-bit float)"
+  },
+  "B# Char": {
+    "prefix": "Char",
+    "body": "Char",
+    "description": "B# type (single character)"
+  },
+  "B# String": {
+    "prefix": "String",
+    "body": "String",
+    "description": "B# type"
+  },
+  "B# Empty": {
+    "prefix": "Empty",
+    "body": "Empty",
+    "description": "B# type"
+  },
+  "B# List": {
+    "prefix": "List",
+    "body": "List",
+    "description": "B# type (dynamic list)"
+  },
+  "B# Tuple": {
+    "prefix": "Tuple",
+    "body": "Tuple(${1:Long, String})",
+    "description": "B# tuple type annotation"
+  },
+  "B# Function type": {
+    "prefix": "Function",
+    "body": "Function",
+    "description": "B# type"
+  },
+  "B# Inf type": {
+    "prefix": "Inf",
+    "body": "Inf",
+    "description": "B# type (infinity singleton)"
+  },
+  "B# NaN type": {
+    "prefix": "NaN",
+    "body": "NaN",
+    "description": "B# type (not-a-number singleton)"
+  },
+  "B# Short array": {
+    "prefix": "Short[]",
+    "body": "Short[]",
+    "description": "B# array type"
+  },
+  "B# Single array": {
+    "prefix": "Single[]",
+    "body": "Single[]",
+    "description": "B# array type"
+  },
+  "B# Integer array": {
+    "prefix": "Integer[]",
+    "body": "Integer[]",
+    "description": "B# array type"
+  },
+  "B# Long array": {
+    "prefix": "Long[]",
+    "body": "Long[]",
+    "description": "B# array type"
+  },
+  "B# Float array": {
+    "prefix": "Float[]",
+    "body": "Float[]",
+    "description": "B# array type"
+  },
+  "B# Double array": {
+    "prefix": "Double[]",
+    "body": "Double[]",
+    "description": "B# array type"
+  },
+  "B# Char array": {
+    "prefix": "Char[]",
+    "body": "Char[]",
+    "description": "B# array type"
+  },
+  "B# String array": {
+    "prefix": "String[]",
+    "body": "String[]",
+    "description": "B# array type"
+  },
+  "B# Bool array": {
+    "prefix": "Bool[]",
+    "body": "Bool[]",
+    "description": "B# array type"
+  },
+  "B# Empty array": {
+    "prefix": "Empty[]",
+    "body": "Empty[]",
+    "description": "B# array type"
+  },
+  "B# __write": {
+    "prefix": "__write",
+    "body": "__write(${1:value})",
+    "description": "B# builtin: print without newline"
+  },
+  "B# __writeln": {
+    "prefix": "__writeln",
+    "body": "__writeln(${1:value})",
+    "description": "B# builtin: print with newline"
+  },
+  "B# __format": {
+    "prefix": "__format",
+    "body": "__format(${1:template}, ${2:args})",
+    "description": "B# builtin: format \"{0}\" template"
+  },
+  "B# __read": {
+    "prefix": "__read",
+    "body": "__read()",
+    "description": "B# builtin: read a line from stdin"
+  },
+  "B# __readln": {
+    "prefix": "__readln",
+    "body": "__readln(${1:prompt})",
+    "description": "B# builtin: read a line with optional prompt"
+  },
+  "B# __is_String": {
+    "prefix": "__is_String",
+    "body": "__is_String(${1:value})",
+    "description": "B# builtin type predicate"
+  },
+  "B# __is_Char": {
+    "prefix": "__is_Char",
+    "body": "__is_Char(${1:value})",
+    "description": "B# builtin type predicate"
+  },
+  "B# __is_Numeric": {
+    "prefix": "__is_Numeric",
+    "body": "__is_Numeric(${1:value})",
+    "description": "B# builtin type predicate"
+  },
+  "B# __is_Short": {
+    "prefix": "__is_Short",
+    "body": "__is_Short(${1:value})",
+    "description": "B# builtin type predicate"
+  },
+  "B# __is_Single": {
+    "prefix": "__is_Single",
+    "body": "__is_Single(${1:value})",
+    "description": "B# builtin type predicate"
+  },
+  "B# __is_Integer": {
+    "prefix": "__is_Integer",
+    "body": "__is_Integer(${1:value})",
+    "description": "B# builtin type predicate"
+  },
+  "B# __is_Long": {
+    "prefix": "__is_Long",
+    "body": "__is_Long(${1:value})",
+    "description": "B# builtin type predicate"
+  },
+  "B# __is_Float": {
+    "prefix": "__is_Float",
+    "body": "__is_Float(${1:value})",
+    "description": "B# builtin type predicate"
+  },
+  "B# __is_Double": {
+    "prefix": "__is_Double",
+    "body": "__is_Double(${1:value})",
+    "description": "B# builtin type predicate"
+  },
+  "B# __is_Empty": {
+    "prefix": "__is_Empty",
+    "body": "__is_Empty(${1:value})",
+    "description": "B# builtin type predicate"
+  },
+  "B# __is_Bool": {
+    "prefix": "__is_Bool",
+    "body": "__is_Bool(${1:value})",
+    "description": "B# builtin type predicate"
+  },
+  "B# __to_Long": {
+    "prefix": "__to_Long",
+    "body": "__to_Long(${1:value})",
+    "description": "B# builtin: convert to Long"
+  },
+  "B# __to_Double": {
+    "prefix": "__to_Double",
+    "body": "__to_Double(${1:value})",
+    "description": "B# builtin: convert to Double"
+  },
+  "B# __to_String": {
+    "prefix": "__to_String",
+    "body": "__to_String(${1:value})",
+    "description": "B# builtin: convert to String"
+  },
+  "B# __time__": {
+    "prefix": "__time__",
+    "body": "__time__()",
+    "description": "B# builtin: current timestamp as Double"
+  },
+  "B# !pragma enforce": {
+    "prefix": "!pragma enforce",
+    "body": "!pragma enforce",
+    "description": "B# caller macro: enforce type annotations (file header)"
+  },
+  "B# !pragma precision": {
+    "prefix": "!pragma precision",
+    "body": "!pragma precision ${1:2}",
+    "description": "B# caller macro: decimal precision 0..12 (file header)"
+  },
+  "B# !pragma precision default": {
+    "prefix": "!pragma precision default",
+    "body": "!pragma precision default",
+    "description": "B# caller macro: reset precision (REPL)"
+  },
+  "B# [#ifver] block": {
+    "prefix": ["[#ifver", "[#ifver]"],
+    "body": ["[#ifver] ${1|__GNU_LINUX,__NT_KERNEL,__DARWIN|}", "${0}", "[#endif]"],
+    "description": "B# platform-conditional block"
+  },
+  "B# [#ifdef]": {
+    "prefix": ["[#ifdef", "[#ifdef]"],
+    "body": "[#ifdef] ${1:name}",
+    "description": "B# predefined macro"
+  },
+  "B# [#define]": {
+    "prefix": ["[#define", "[#define]"],
+    "body": "[#define] ${1:name} ${2:value}",
+    "description": "B# predefined macro"
+  },
+  "B# [#endif]": {
+    "prefix": ["[#endif", "[#endif]"],
+    "body": "[#endif]",
+    "description": "B# predefined macro: close conditional block"
+  },
+  "B# __GNU_LINUX": {
+    "prefix": "__GNU_LINUX",
+    "body": "__GNU_LINUX",
+    "description": "B# platform constant (use with [#ifver])"
+  },
+  "B# __NT_KERNEL": {
+    "prefix": "__NT_KERNEL",
+    "body": "__NT_KERNEL",
+    "description": "B# platform constant (use with [#ifver])"
+  },
+  "B# __DARWIN": {
+    "prefix": "__DARWIN",
+    "body": "__DARWIN",
+    "description": "B# platform constant (use with [#ifver])"
+  },
+  "B# cast": {
+    "prefix": "cast",
+    "body": "cast(${1:value}, ${2|Short,Single,Integer,Long,Float,Double,Char,String,Bool|})",
+    "description": "B# cast(value, Type) conversion"
+  },
+  "B# Error": {
+    "prefix": "Error",
+    "body": "Error",
+    "description": "B# error type (catch)"
+  },
+  "B# B_SharpSyntaxError": {
+    "prefix": "B_SharpSyntaxError",
+    "body": "B_SharpSyntaxError",
+    "description": "B# error type (catch)"
+  },
+  "B# RunTimeError": {
+    "prefix": "RunTimeError",
+    "body": "RunTimeError",
+    "description": "B# error type (catch)"
+  },
+  "B# AssignmentError": {
+    "prefix": "AssignmentError",
+    "body": "AssignmentError",
+    "description": "B# error type (catch)"
+  },
+  "B# ModificationError": {
+    "prefix": "ModificationError",
+    "body": "ModificationError",
+    "description": "B# error type (catch)"
+  },
+  "B# ComparisonError": {
+    "prefix": "ComparisonError",
+    "body": "ComparisonError",
+    "description": "B# error type (catch)"
+  },
+  "B# BSharpMathError": {
+    "prefix": "BSharpMathError",
+    "body": "BSharpMathError",
+    "description": "B# error type (catch)"
+  },
+  "B# ShadowingError": {
+    "prefix": "ShadowingError",
+    "body": "ShadowingError",
+    "description": "B# error type (catch)"
+  }
+}

@@ -1700,7 +1700,10 @@ class Tuple(Value):
         return Boolean(not res.value), None
 
     def copy(self):
-        return self
+        # Tuples are immutable, but commits and other tree rewrites replace
+        # elements, so a copy must own its element list (previously this
+        # returned self, letting round_result mutate the source in place).
+        return Tuple(self.elements)
 
     def __repr__(self):
         return "(" + ", ".join(repr(e) for e in self.elements) + ")"
@@ -2298,6 +2301,20 @@ class Function(Value):
                 # Already copied above, but keep for clarity - no extra wrapper needed
                 pass
 
+            # Precision: a bound parameter comes to rest at the
+            # *definition* file's decimals (params are the callee's
+            # storage, so the callee's pragma governs them).
+            from B_Sharp.CodeExecution.caller_macros import (
+                commit_value,
+                get_config,
+            )
+
+            _pos = param_name_tok.pos_start
+            arg_value = commit_value(
+                arg_value,
+                get_config(_pos.file_name if _pos is not None else None),
+            )
+
             _, err = exec_context.variables.set_pos(
                 param_name_tok.pos_start, param_name_tok.pos_end
             ).define(
@@ -2539,6 +2556,19 @@ class StructDefinition(Value):
                 and arg_is_literal[i]
             )
 
+        from B_Sharp.CodeExecution.caller_macros import commit_value, get_config
+
+        # Precision: a bound field comes to rest at the struct
+        # *definition* file's decimals (fields are the struct's
+        # storage). Falls back to the constructor call site.
+        member_cfg = {}
+        for member_node in self.member_nodes or []:
+            name_tok = getattr(member_node, "name", None)
+            mpos = getattr(member_node, "pos_start", None)
+            if name_tok is not None and mpos is not None:
+                member_cfg[name_tok.value] = get_config(mpos.file_name)
+        call_cfg = get_config(getattr(pos_start, "file_name", None))
+
         for field_name, value in bindings.items():
             declared = variables[field_name]["type"]
             if (
@@ -2557,6 +2587,9 @@ class StructDefinition(Value):
                     value.set_pos(pos_start, pos_end)
                     value.set_context(exec_context)
                 # Otherwise the assign() below reports ASN005.
+            value = commit_value(
+                value, member_cfg.get(field_name, call_cfg)
+            )
             _, err = exec_context.variables.assign(
                 field_name, value, pos_start, pos_end
             )

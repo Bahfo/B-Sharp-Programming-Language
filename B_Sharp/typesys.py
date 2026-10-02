@@ -85,11 +85,11 @@ TYPES = {
     "Float": BSharpType("Float", FLOAT, bits=32, llvm="float", rank=5, tag=5),
     "Double": BSharpType("Double", FLOAT, bits=64, llvm="double", rank=6, tag=6),
     "Bool": BSharpType("Bool", BOOL, bits=1, signed=False, llvm="i1", rank=0, tag=7),
-    "Char": BSharpType("Char", CHAR, bits=8, signed=False, llvm="i8", rank=0, tag=8),
+    "Char": BSharpType("Char", CHAR, bits=32, signed=False, llvm="i32", rank=0, tag=8),
     "String": BSharpType("String", STRING, llvm="ptr", rank=0, tag=9),
     "Empty": BSharpType("Empty", EMPTY, llvm="i8", rank=0, tag=10),
-    "NaN": BSharpType("NaN", NAN, llvm="double", rank=0, tag=11),
-    "Inf": BSharpType("Inf", INF, llvm="double", rank=0, tag=12),
+    "NaN": BSharpType("NaN", NAN, llvm="ptr", rank=0, tag=11),
+    "Inf": BSharpType("Inf", INF, llvm="ptr", rank=0, tag=12),
     "List": BSharpType("List", LIST, llvm="ptr", rank=0, tag=13),
     "Array": BSharpType("Array", ARRAY, llvm="ptr", rank=0, tag=14),
     "Tuple": BSharpType("Tuple", TUPLE, llvm="ptr", rank=0, tag=15),
@@ -110,7 +110,6 @@ INT_RANGES = {
 DEFAULT_INT_TYPE = "Long"
 DEFAULT_FLOAT_TYPE = "Double"
 
-# Numeric literal suffixes (case-insensitive): 5i, 5s, 5b, 5L, 1.5f, 5.0D.
 SUFFIX_TO_TYPE = {
     "l": "Long",
     "i": "Integer",
@@ -120,7 +119,6 @@ SUFFIX_TO_TYPE = {
     "d": "Double",
 }
 
-# Targets allowed for the `cast(value, Type)` conversion form.
 CASTABLE_TYPES = NUMERIC_TYPE_NAMES + ("Char", "String", "Bool")
 
 
@@ -210,7 +208,6 @@ def promote(name_a, name_b):
         return None
     if float_name == "Double":
         return "Double"
-    # float side is Float: only a 64-bit integer outgrows it.
     return "Double" if int_name == "Long" else "Float"
 
 

@@ -197,38 +197,84 @@ def preprocess_pragmas(tokens, file_name):
     return tokens[i:], cfg, None
 
 
-def round_number(raw, cfg):
-    """Round a raw Python number according to a config (floats only)."""
-    if cfg.precision is None:
-        return raw
-    if type(raw) is float:
-        return round(raw, cfg.precision)
-    return raw
+def _quantize_numeric(value, cfg):
+    """Return a FRESH numeric value quantized to ``cfg.precision`` decimals.
+
+    Float results are additionally narrowed to binary32, matching the
+    interpreter's per-op Float rule. The input object is never touched.
+    """
+    payload = value.value
+    if type(payload) is float:
+        payload = round(payload, cfg.precision)
+    out = type(value)(payload)
+    if out.type_name == "Float":
+        from B_Sharp import typesys as _ts
+
+        out.value = _ts.to_f32(out.value)
+    return out
 
 
 def round_result(value, cfg):
-    """Round a runtime value tree (numeric / List / Array / Tuple) in place."""
+    """Quantize a value tree (numeric / List / Array / Tuple) to ``cfg.precision``.
+
+    Pure: returns a new value; the input and every object it aliases are
+    never mutated. Without a precision pragma the value passes through
+    untouched.
+    """
+    if cfg.precision is None:
+        return value
+    return commit_value(value, cfg)
+
+
+def commit_value(value, cfg):
+    """Quantize a value that comes to rest under a precision pragma.
+
+    A value comes to rest when it is stored (variable/field/element/
+    parameter binding), returned, compared, tested for truth, or when
+    a statement yields it. Intermediate arithmetic is untouched, so a
+    whole expression chain completes at full precision and only its
+    final result is quantized: with precision 2, `1.0/3.0*3.0` rests
+    as 1.0 and shows "1.00".
+
+    The stored value and the displayed value then always agree at the
+    wanted decimals. Returns a NEW value; the input is never mutated
+    (a stored source object must not change as a side effect). Container
+    commits rebuild fresh containers whose elements are themselves
+    freshly committed; non-numeric leaves (structs, functions, errors)
+    pass through by reference so identity is preserved. Without a
+    precision pragma the value passes through untouched.
+    """
     if cfg.precision is None:
         return value
 
     from B_Sharp.ASTNodes.instances import NumericValue, List, Array, Tuple
 
     if isinstance(value, NumericValue):
-        if type(value.value) is float:
-            value.value = round(value.value, cfg.precision)
-            if value.type_name == "Float":
-                from B_Sharp import typesys as _ts
-
-                value.value = _ts.to_f32(value.value)
+        out = _quantize_numeric(value, cfg)
+    elif isinstance(value, Tuple):
+        # Fresh container AND fresh elements: Tuple.copy() is a real copy,
+        # but building directly also re-commits every element so no numeric
+        # object is ever shared with (and mutated through) the source.
+        out = Tuple([commit_value(element, cfg) for element in value.elements])
+    elif isinstance(value, (List, Array)):
+        # copy() gives a fresh container with the right metadata
+        # (element_type, depth, is_const); replacing every element with a
+        # freshly committed one removes the scalar-sharing alias.
+        out = value.copy()
+        out.list_of_elements = [
+            commit_value(element, cfg) for element in out.list_of_elements
+        ]
+    else:
         return value
-    if isinstance(value, Tuple):
-        for idx, element in enumerate(value.elements):
-            value.elements[idx] = round_result(element, cfg)
-        return value
-    if isinstance(value, (List, Array)):
-        for idx, element in enumerate(value.list_of_elements):
-            value.list_of_elements[idx] = round_result(element, cfg)
-    return value
+    try:
+        out.set_context(value.context)
+    except Exception:
+        pass
+    try:
+        out.set_pos(value.pos_start, value.pos_end)
+    except Exception:
+        pass
+    return out
 
 
 def render_element(value, cfg):

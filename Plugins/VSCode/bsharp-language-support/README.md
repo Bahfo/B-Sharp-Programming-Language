@@ -7,14 +7,18 @@ Language (`.bsharp` and `.bshead` files).
 
 - Syntax highlighting for B# source files
 - Single-line (`//`) and block (`/* ... */`) comments
-- Double- and single-quoted strings with escape sequences
-- Keywords: control flow, function/type declarations, storage (`var`/`const`/`struct`)
-- Types: `Number`, `String`, `Bool`/`Boolean`, `List`, `Function`, `Inf`, `NaN`, `Empty`
-- Array annotations: `Number[]`, `String[]`, `Bool[]`, `Empty[]`, ...
-- Caller macros: `!pragma enforce`, `!pragma precision <0..12>`, `!pragma precision default`
-- Error types used in `catch(...)` blocks
-- Builtin functions (`writeln`, `write`, `format`, `read`, `readln`, `to_String`, ...)
-- Numbers, floats, and scientific notation
+- Double-quoted strings with escape sequences, single-quoted `Char` literals
+- Keywords: control flow (`if`/`elif`/`else`/`then`/`do`/`for`/`while`/`try`/`catch`/`using`/`return`/`break`/`continue`/`pass`), function declarations (`fn`/`function`), storage (`var`/`const`/`struct`), logic (`and`/`or`/`not`)
+- Types: `Bool`, `Short`, `Single`, `Integer`, `Long`, `Float`, `Double`, `Char`, `String`, `Empty`, `List`, `Tuple`, `Function`, `Inf`, `NaN`
+- Array annotations: `Short[]`, `Single[]`, `Integer[]`, `Long[]`, `Float[]`, `Double[]`, `Char[]`, `String[]`, `Bool[]`, `Empty[]` (repeatable for nesting, e.g. `Long[][]`), plus `Tuple(...)` annotations
+- Caller macros: `!pragma enforce`, `!pragma precision <0..12>`, `!pragma precision default` (stray `!name` / bare `!` flagged illegal; `!=` stays a comparison)
+- Preproc blocks: `[#ifver]`, `[#ifdef]`, `[#define]`, `[#endif]` and platform constants `__GNU_LINUX`, `__NT_KERNEL`, `__DARWIN`
+- `cast(value, Type)` conversion form (`Short`/`Single`/`Integer`/`Long`/`Float`/`Double`/`Char`/`String`/`Bool`)
+- Error types used in `catch(...)` blocks (`Error`, `B_SharpSyntaxError`, `RunTimeError`, `AssignmentError`, `ModificationError`, `ComparisonError`, `BSharpMathError`, `ShadowingError`)
+- Builtin functions (`__writeln`, `__write`, `__format`, `__read`, `__readln`, `__is_String`, `__is_Char`, `__is_Numeric`, `__is_Short`, `__is_Single`, `__is_Integer`, `__is_Long`, `__is_Float`, `__is_Double`, `__is_Empty`, `__is_Bool`, `__to_Long`, `__to_Double`, `__to_String`, `__time__`)
+- Numbers, floats, scientific notation, and literal suffixes (`5i`/`5s`/`5b`/`5L`/`1.5f`/`5.0D`)
+- Operators as the lexer defines them: `++`, `--`, `->`, `^` (power), `*`, `/`, `%` (integer division), `~` (modulo), `+`, `-`, `=`/`==`/`!=`/`<`/`>`/`<=`/`>=`, `.`/`..`/`...` (note: `**` is illegal and flagged)
+- Autocompletion snippets (`snippets/bsharp.json`) for keywords, types, array types, all `__` builtins, `!pragma` macros, `[#...]` preproc blocks, `cast(value, Type)`, and `catch(...)` error types — with tab-stop templates for `fn`, `if`/`for`/`while`/`try`, and `var`/`const`
 
 ## Installing Locally (development)
 
@@ -48,9 +52,14 @@ iterating on the grammar):
 
 - `syntaxes/bsharp.tmLanguage.json` — the TextMate grammar (single source of
   truth for highlighting).
+- `snippets/bsharp.json` — autocompletion snippets; registered via the
+  `snippets` contribution in `package.json`.
 - `language-configuration.json` — comments, brackets, auto-closing pairs.
 - `package.json` — extension manifest; bump `version` before repackaging.
 
-The grammar mirrors `B_Sharp/tokens.py`: keep the keyword list in
-`syntaxes/bsharp.tmLanguage.json` in sync whenever new keywords or caller
-macros are added to the language.
+The grammar mirrors `B_Sharp/tokens.py` (keywords/types), `B_Sharp/lexer.py`
+(operators/comments/strings/chars/macros), `B_Sharp/builtins.py` (builtin
+names), `B_Sharp/typesys.py` + `B_Sharp/ASTNodes/instances.py` (valid type and
+array spellings, `cast` targets) and `B_Sharp/CodeExecution/caller_macros.py`
+(`!pragma` directives): keep `syntaxes/bsharp.tmLanguage.json` in sync
+whenever tokens or caller macros change.

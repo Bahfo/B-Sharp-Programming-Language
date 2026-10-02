@@ -3,8 +3,7 @@ from B_Sharp.ASTNodes.parser import _with_recursion_headroom
 from B_Sharp import typesys as _typesys
 from B_Sharp.CodeExecution.caller_macros import (
     get_config,
-    round_number,
-    round_result,
+    commit_value,
     render_value,
     preprocess_pragmas,
 )
@@ -108,7 +107,10 @@ class Interpreter:
     ################################################################
 
     def visit_NumberNode(self, node, context):
-        value = round_number(node.token.value, self._cfg(node))
+        # Precision never rounds computed values: literals keep full
+        # IEEE payloads. Rounding happens only when a value comes to
+        # rest (stored, returned, bound, compared, tested, displayed).
+        value = node.token.value
         literal_type = getattr(node, "literal_type", None) or (
             "Double" if isinstance(value, float) else "Long"
         )
@@ -154,7 +156,7 @@ class Interpreter:
         must fit the range), a float literal only into a float type.
         Anything else is an ASN005 assignment error.
         """
-        raw = round_number(num_node.token.value, self._cfg(num_node))
+        raw = num_node.token.value
         is_float = num_node.literal_type in _typesys.FLOAT_TYPE_NAMES
         payload, reason = _typesys.context_literal(raw, is_float, target_name)
         if reason is not None:
@@ -240,6 +242,20 @@ class Interpreter:
 
         node_cfg = self._cfg(node)
 
+        if node.op_token.type in (
+            TOKEN_EE,
+            TOKEN_NOT_E,
+            TOKEN_LT,
+            TOKEN_GT,
+            TOKEN_LTE,
+            TOKEN_GTE,
+        ):
+            # Comparisons judge the precision-owned values: operands
+            # come to rest at N decimals first, so (0.1 + 0.2) == 0.3
+            # is true and chains like 1.0/3.0*3.0 compare as 1.0.
+            left = commit_value(left, node_cfg)
+            right = commit_value(right, node_cfg)
+
         if node.op_token.type == TOKEN_PLUS:
             # Under a precision pragma, string concatenation keeps the
             # per-file rendering of the number operand ("n=" + 3.14159 -> "n=3.14").
@@ -289,7 +305,9 @@ class Interpreter:
             error.pos_end = node.pos_end
             return res.failure(error)
         else:
-            result = round_result(result, node_cfg)
+            # No rounding mid-chain: the whole expression completes at
+            # full precision (1.0/3.0*3.0 is 1.0). `node_cfg` still
+            # drives display (string-concat rendering above).
             return res.success(result.set_pos(node.pos_start, node.pos_end))
 
     def visit_short_circuit(self, node, left, res, context):
@@ -357,7 +375,6 @@ class Interpreter:
 
         if error:
             return res.failure(error)
-        result = round_result(result, self._cfg(node))
         return res.success(result.set_pos(node.pos_start, node.pos_end))
 
     def visit_VariableAccessNode(self, node, context):
@@ -424,6 +441,11 @@ class Interpreter:
         if isinstance(value, (List, Array)):
             value = value.copy()
 
+        # Precision: a stored value comes to rest at N decimals, so
+        # store and show always agree (commit_value copies; sources
+        # are never mutated as a side effect).
+        value = commit_value(value, self._cfg(node))
+
         val, error = context.variables.set_pos(node.pos_start, node.pos_end).define(
             name=var_name,
             data_type=data_type_class,
@@ -483,6 +505,10 @@ class Interpreter:
             err = value._validate_all()
             if err:
                 return res.failure(err)
+
+        # Precision: bound values come to rest at N decimals
+        # (recurses into tuple/list elements for both paths below).
+        value = commit_value(value, self._cfg(node))
 
         # Destructuring: `var a, b = f()` / `var a, b = (1, 2)` unpacks a
         # tuple RHS. A Tuple *annotation* (`var a, b : Tuple = t`) opts out
@@ -594,6 +620,8 @@ class Interpreter:
         if isinstance(value, (List, Array)):
             value = value.copy()
 
+        value = commit_value(value, self._cfg(node))
+
         val, error = context.variables.set_pos(node.pos_start, node.pos_end).assign(
             name=var_name, value=value
         )
@@ -614,6 +642,9 @@ class Interpreter:
             if res.func_return_value is not None:
                 return res
 
+            # Conditions test the precision-owned value (0.1 + 0.2 - 0.3
+            # is 0.0 at precision 2, hence falsy).
+            condition_value = commit_value(condition_value, self._cfg(node))
             if condition_value.true_():
                 # Leaking: `var` inside `if` must be visible outside (no new Context)
                 expression_value = res.register(self.visit(expression, context))
@@ -653,6 +684,9 @@ class Interpreter:
                 return res
             last_value = value
 
+        # A statement's yielded value comes to rest (REPL echo, tests,
+        # and the next stage all see the precision-owned value).
+        last_value = commit_value(last_value, self._cfg(node))
         return res.success(last_value)
 
     def visit_StringNode(self, node, context):
@@ -729,9 +763,7 @@ class Interpreter:
 
         val_cls = type(val)
         old_num = int(val.value)
-        node_cfg = self._cfg(node)
         new_num = old_num + 1 if node.op_tok.type == TOKEN_INC else old_num - 1
-        new_num = round_number(new_num, node_cfg)
         new_val = (
             val_cls(new_num).set_context(context).set_pos(node.pos_start, node.pos_end)
         )
@@ -743,7 +775,7 @@ class Interpreter:
             return res.failure(assign_err)
 
         return res.success(
-            val_cls(round_number(old_num if node.is_postfix else new_num, node_cfg))
+            val_cls(old_num if node.is_postfix else new_num)
             .set_context(context)
             .set_pos(node.pos_start, node.pos_end)
         )
@@ -755,7 +787,17 @@ class Interpreter:
             cond_val = res.register(self.visit(node.condition_node, context))
             if res.error:
                 return res
+            if res.should_break or res.should_continue:
+                # The condition is evaluated in the enclosing context (the
+                # loop contributes no in_loop scope of its own), so a
+                # break/continue raised here was validated by an enclosing
+                # loop and propagates to it. Same rule as the do-while
+                # condition (visit_DoNode).
+                return res
+            if res.func_return_value is not None:
+                return res
 
+            cond_val = commit_value(cond_val, self._cfg(node))
             if not cond_val.true_():
                 break
 
@@ -803,6 +845,7 @@ class Interpreter:
                 return res
             if res.func_return_value is not None:
                 return res
+            cond_val = commit_value(cond_val, self._cfg(node))
             if not cond_val.true_():
                 break
         return res.success(
@@ -819,15 +862,63 @@ class Interpreter:
             in_function=context.in_function,
             in_loop=True,
         )
+
+        def run_update():
+            """Evaluate the update expression under header-flag rules.
+
+            Returns "done" when the loop must stop here (error set, or a
+            return/break that the caller propagates or exits on), else
+            "next" to continue with the condition test.
+            """
+            res.register(self.visit(node.update_node, loop_context))
+            if res.error or res.func_return_value is not None:
+                return "done"
+            if res.should_break:
+                # Validated by this loop's own header context: exit the loop.
+                res.should_break = False
+                return "done"
+            if res.should_continue:
+                # Update already ran: fall through to the condition test.
+                res.should_continue = False
+            return "next"
+
         res.register(self.visit(node.init_node, loop_context))
         if res.error:
             return res
+        if res.func_return_value is not None:
+            return res
+        if res.should_break:
+            # Validated by this loop's own header context: the loop never
+            # runs its first iteration.
+            res.should_break = False
+            return res.success(
+                Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
+            )
+        if res.should_continue:
+            # A continue in the initializer proceeds to the condition test.
+            res.should_continue = False
 
         while True:
             cond_val = res.register(self.visit(node.condition_node, loop_context))
             if res.error:
                 return res
+            if res.func_return_value is not None:
+                return res
+            if res.should_break:
+                # Validated by this loop's own header context: exit the loop.
+                res.should_break = False
+                break
+            if res.should_continue:
+                # A continue in the condition skips the body: it runs the
+                # update, then the condition is tested again.
+                res.should_continue = False
+                if run_update() == "done":
+                    if res.error or res.func_return_value is not None:
+                        return res
+                    break
+                continue
 
+            cond_val = commit_value(cond_val, self._cfg(node))
             if not cond_val.true_():
                 break
 
@@ -847,9 +938,10 @@ class Interpreter:
             if res.should_continue:
                 res.should_continue = False
 
-            res.register(self.visit(node.update_node, loop_context))
-            if res.error:
-                return res
+            if run_update() == "done":
+                if res.error or res.func_return_value is not None:
+                    return res
+                break
 
         return res.success(
             Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
@@ -1135,6 +1227,7 @@ class Interpreter:
                 Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
             )
 
+        return_val = commit_value(return_val, self._cfg(node))
         return res.success_return(return_val)
 
     def visit_PropertyAccessNode(self, node, context):
@@ -1331,6 +1424,8 @@ class Interpreter:
         value = res.register(self.visit(node.value_node, context))
         if res.error:
             return res
+        # Precision: the stored element comes to rest at N decimals.
+        value = commit_value(value, self._cfg(node))
 
         if isinstance(container, Tuple):
             return res.failure(
@@ -1665,8 +1760,11 @@ class Interpreter:
         # Inject copies of the entries through define(), so existing local
         # variables, consts, and builtins are protected from overwrite and
         # the importer never shares mutable binding state with the module.
+        # Binding a name in the importer is a rest point: quantize under the
+        # IMPORTER's precision config. commit_value is pure, so the module's
+        # own stored objects are never touched.
         for name, entry in selected.items():
-            value = entry["value"]
+            value = commit_value(entry["value"], self._cfg(node))
             if hasattr(value, "copy") and isinstance(value, (List, Array)):
                 value = value.copy()
             _, error = context.variables.set_pos(node.pos_start, node.pos_end).define(
@@ -1982,6 +2080,8 @@ class Interpreter:
                 )
                 if conv_err is None:
                     val = converted
+            # Precision: the stored field comes to rest at N decimals.
+            val = commit_value(val, self._cfg(node))
             assigned_val, err = obj.set_field(
                 prop_name, val, node.pos_start, node.pos_end
             )
