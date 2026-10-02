@@ -149,11 +149,10 @@ class Interpreter:
     def _type_numeric_literal(self, num_node, target_name, context, decl_node):
         """Builds a NumberNode literal directly as the declared numeric type.
 
-        Implements annotation narrowing (`var x : Integer = 5`): an int
-        literal must fit the range, an int literal always converts to a
-        float type, a float literal always converts to a float type, and
-        a float literal converts to an int type only when integral and in
-        range. Anything else is an ASN005 assignment error.
+        Implements annotation narrowing (`var x : Integer = 5`):
+        kind-strict — an int literal narrows only into an int type (and
+        must fit the range), a float literal only into a float type.
+        Anything else is an ASN005 assignment error.
         """
         raw = round_number(num_node.token.value, self._cfg(num_node))
         is_float = num_node.literal_type in _typesys.FLOAT_TYPE_NAMES

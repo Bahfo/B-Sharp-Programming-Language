@@ -2008,6 +2008,16 @@ class Parser:
                         )
                     )
 
+            if self.file_config.enforce_types and param_type is None:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        param_name.pos_start,
+                        param_name.pos_end,
+                        "SYN076",
+                        {"param": param_name.value, "func": var_name_tok.value},
+                    )
+                )
+
             param_default = self._param_default(res)
             if res.error:
                 return res

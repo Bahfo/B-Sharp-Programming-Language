@@ -2870,8 +2870,6 @@ def _default_for_type(
     if data_type_class is None:
         return _set(Empty())
     if isinstance(data_type_class, type) and issubclass(data_type_class, NumericValue):
-        # data_type_class(0) normalizes: integer zero for int kinds,
-        # 0.0 for Float/Double.
         return _set(data_type_class(0))
     if data_type_class is String:
         return _set(String(""))

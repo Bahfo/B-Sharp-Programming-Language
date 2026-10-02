@@ -51,7 +51,16 @@ class BSharpType:
         "tag",
     )
 
-    def __init__(self, name, kind, bits=0, signed=True, llvm="ptr", rank=0, tag=0):
+    def __init__(
+        self,
+        name,
+        kind,
+        bits=0,
+        signed=True,
+        llvm="ptr",
+        rank=0,
+        tag=0,
+    ):
         self.name = name
         self.kind = kind
         self.bits = bits
@@ -238,30 +247,30 @@ def convert_numeric(payload, from_kind, target_name):
 def context_literal(py_value, is_float, target_name):
     """Type a numeric literal against a declared type (annotation narrowing).
 
+    Kind-strict: an int literal narrows only into an int type, a float
+    literal only into a float type. Cross-kind literals are rejected even
+    when the value would convert exactly — use `cast` or a correctly
+    suffixed literal instead.
+
     Returns (payload, None) on success or (None, reason) where reason is
-    "range" (out of range) or "fraction" (non-integral float for int type).
+    "kind" (int/float kind mismatch) or "range" (out of range).
     Rules:
       int literal -> int type:      allowed iff it fits, else "range"
-      int literal -> float type:    always allowed (sitofp rounding)
+      int literal -> float type:    rejected ("kind")
       float literal -> float type:  always allowed (fptrunc rounding)
-      float literal -> int type:    allowed iff integral and fits,
-                                    "fraction" / "range" otherwise
+      float literal -> int type:    rejected ("kind")
     """
     target = TYPES[target_name]
     if target.kind == INT:
-        if not is_float:
-            value = int(py_value)
-            if fits_int(target_name, value):
-                return value, None
-            return None, "range"
-        value = float(py_value)
-        if not math.isfinite(value) or not value.is_integer():
-            return None, "fraction"
-        value = int(value)
+        if is_float:
+            return None, "kind"
+        value = int(py_value)
         if fits_int(target_name, value):
             return value, None
         return None, "range"
     if target.kind == FLOAT:
+        if not is_float:
+            return None, "kind"
         try:
             value = float(py_value)
         except OverflowError:
