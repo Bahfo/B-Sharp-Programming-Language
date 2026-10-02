@@ -4,18 +4,21 @@
   "scopeName": "source.bsharp",
   "patterns": [
     { "include": "#comments" },
-    { "include": "#macros" },
+    { "include": "#caller-macros" },
+    { "include": "#preproc" },
     { "include": "#strings" },
+    { "include": "#chars" },
     { "include": "#builtins" },
     { "include": "#keywords" },
+    { "include": "#cast" },
     { "include": "#array-types" },
     { "include": "#types" },
     { "include": "#error-types" },
     { "include": "#constants" },
+    { "include": "#numbers" },
     { "include": "#operators" },
     { "include": "#delimiters" },
-    { "include": "#functions" },
-    { "include": "#numbers" }
+    { "include": "#functions" }
   ],
   "repository": {
     "comments": {
@@ -31,28 +34,39 @@
         }
       ]
     },
-    "macros": {
+    "caller-macros": {
       "patterns": [
         {
-          "begin": "^\\s*!\\s*[a-zA-Z_][a-zA-Z0-9_]*",
-          "beginCaptures": {
-            "0": { "name": "keyword.macro.bsharp" }
-          },
-          "end": "$",
-          "patterns": [
-            {
-              "name": "support.function.macro.bsharp",
-              "match": "\\b(enforce|precision|default)\\b"
-            },
-            {
-              "name": "constant.numeric.integer.bsharp",
-              "match": "\\b[0-9]+\\b"
-            },
-            {
-              "name": "comment.line.macro.bsharp",
-              "match": "//.*$"
-            }
-          ]
+          "name": "keyword.macro.bsharp",
+          "match": "!\\s*pragma\\b"
+        },
+        {
+          "match": "(!\\s*pragma)\\s+(enforce|precision)\\b(?:\\s+(default|\\d+))?",
+          "captures": {
+            "1": { "name": "keyword.macro.bsharp" },
+            "2": { "name": "support.function.macro.bsharp" },
+            "3": { "name": "constant.numeric.integer.bsharp" }
+          }
+        },
+        {
+          "name": "invalid.illegal.macro.bsharp",
+          "match": "!(?!=)\\s*[a-zA-Z_][a-zA-Z0-9_]*"
+        },
+        {
+          "name": "invalid.illegal.bsharp",
+          "match": "!(?!=)"
+        }
+      ]
+    },
+    "preproc": {
+      "patterns": [
+        {
+          "name": "keyword.preproc.bsharp",
+          "match": "\\[#\\s*(ifver|ifdef|define|endif)\\s*\\]"
+        },
+        {
+          "name": "constant.other.platform.bsharp",
+          "match": "\\b(__GNU_LINUX|__NT_KERNEL|__DARWIN)\\b"
         }
       ]
     },
@@ -68,9 +82,13 @@
               "match": "\\\\."
             }
           ]
-        },
+        }
+      ]
+    },
+    "chars": {
+      "patterns": [
         {
-          "name": "string.quoted.single.bsharp",
+          "name": "constant.character.bsharp",
           "begin": "'",
           "end": "'",
           "patterns": [
@@ -86,7 +104,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.bsharp",
-          "match": "\\b(write|writeln|format|read|readln|is_String|is_Number|is_Empty|is_Bool|to_Number|to_String|time)\\b"
+          "match": "\\b(__writeln|__readln|__is_String|__is_Numeric|__is_Short|__is_Single|__is_Integer|__is_Long|__is_Float|__is_Double|__is_Empty|__is_Bool|__is_Char|__to_Long|__to_Double|__to_String|__format|__write|__read|__time__)\\b"
         }
       ]
     },
@@ -94,7 +112,7 @@
       "patterns": [
         {
           "name": "keyword.control.bsharp",
-          "match": "\\b(if|elif|else|then|do|for|while|try|catch|using|return|break|continue|pass|pragma)\\b"
+          "match": "\\b(if|elif|else|then|do|for|while|try|catch|using|return|break|continue|pass)\\b"
         },
         {
           "name": "keyword.operator.logical.bsharp",
@@ -110,11 +128,21 @@
         }
       ]
     },
+    "cast": {
+      "patterns": [
+        {
+          "match": "\\b(cast)(?=\\s*\\()",
+          "captures": {
+            "1": { "name": "support.function.cast.bsharp" }
+          }
+        }
+      ]
+    },
     "array-types": {
       "patterns": [
         {
           "name": "storage.type.array.bsharp",
-          "match": "\\b(Number|String|Bool|Empty)\\[\\]\\b"
+          "match": "\\b(Short|Single|Integer|Long|Float|Double|Char|String|Bool|Empty)(\\[\\])+"
         }
       ]
     },
@@ -122,7 +150,7 @@
       "patterns": [
         {
           "name": "entity.name.type.bsharp",
-          "match": "\\b(Bool|Number|String|List|Function|Tuple|Inf|NaN|Empty)\\b"
+          "match": "\\b(Bool|Short|Single|Integer|Long|Float|Double|Char|String|Empty|List|Tuple|Function|Inf|NaN)\\b"
         }
       ]
     },
@@ -138,7 +166,7 @@
       "patterns": [
         {
           "name": "constant.language.numeric.bsharp",
-          "match": "\\b(inf|nan|Inf|NaN)\\b"
+          "match": "\\b(inf|nan)\\b"
         },
         {
           "name": "constant.language.boolean.bsharp",
@@ -150,8 +178,24 @@
         }
       ]
     },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.bsharp",
+          "match": "\\b[0-9]+\\.[0-9]+([eE][+-]?[0-9]+)?[fFdD]?\\b|\\b[0-9]+[eE][+-]?[0-9]+[fFdD]?\\b|\\b[0-9]+[fFdD]\\b"
+        },
+        {
+          "name": "constant.numeric.integer.bsharp",
+          "match": "\\b[0-9]+[lLisSbB]?\\b"
+        }
+      ]
+    },
     "operators": {
       "patterns": [
+        {
+          "name": "invalid.illegal.bsharp",
+          "match": "\\*\\*"
+        },
         {
           "name": "keyword.operator.comparison.bsharp",
           "match": "==|!=|<=|>=|<|>"
@@ -161,8 +205,20 @@
           "match": "="
         },
         {
+          "name": "keyword.operator.arrow.bsharp",
+          "match": "->"
+        },
+        {
+          "name": "keyword.operator.increment.bsharp",
+          "match": "\\+\\+|--"
+        },
+        {
           "name": "keyword.operator.arithmetic.bsharp",
-          "match": "\\+\\+|--|\\*\\*|//|<<|>>>?|\\+|\\-|\\*|/|%"
+          "match": "\\+|-|\\*|/|%|~|\\^"
+        },
+        {
+          "name": "keyword.operator.range.bsharp",
+          "match": "\\.\\.\\.|\\.\\.|\\."
         }
       ]
     },
@@ -189,26 +245,10 @@
     "functions": {
       "patterns": [
         {
-          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
           "captures": {
             "1": { "name": "entity.name.function.bsharp" }
           }
-        }
-      ]
-    },
-    "numbers": {
-      "patterns": [
-        {
-          "name": "constant.numeric.float.bsharp",
-          "match": "\\b[0-9]+\\.[0-9]+([eE][+-]?[0-9]+)?\\b"
-        },
-        {
-          "name": "constant.numeric.float.bsharp",
-          "match": "\\b[0-9]+[eE][+-]?[0-9]+\\b"
-        },
-        {
-          "name": "constant.numeric.integer.bsharp",
-          "match": "\\b[0-9]+\\b"
         }
       ]
     }

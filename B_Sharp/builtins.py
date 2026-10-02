@@ -223,12 +223,11 @@ def _to_string(args, context, call_node):
 
 
 def _time_(args, context, call_node):
-    from B_Sharp.CodeExecution.caller_macros import round_number, get_config
-
     if len(args) != 0:
         return None, RunTimeError(None, None, "RUN138")
-    cfg = get_config(call_node.pos_start.file_name if call_node else None)
-    return Double(round_number(time.time(), cfg))
+    # Full-resolution timestamp: it comes to rest (stored, returned,
+    # displayed) at the precision pragma like every other value.
+    return Double(time.time())
 
 
 BUILTIN_FUNCTIONS = {
