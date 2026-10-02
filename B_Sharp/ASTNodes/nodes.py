@@ -4,9 +4,6 @@ import math
 class NumberNode:
     def __init__(self, token):
         self.token = token
-        # LLVM-driven literal type from the lexer (`5` -> Long, `3.14` ->
-        # Double, `5i` -> Integer, `1.5f` -> Float, ...). Defaults are kept
-        # for tokens built without the lexer (e.g. in tests).
         if getattr(token, "literal_type", None) is not None:
             self.literal_type = token.literal_type
         elif getattr(token, "type", None) == "FLOAT":
