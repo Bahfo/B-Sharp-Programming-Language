@@ -187,8 +187,9 @@ def normalize_payload(type_name, raw):
 def promote(name_a, name_b):
     """Result type of a binary numeric operation (dynamic promotion).
 
+    same type + same type -> that same type (Float + Float stays Float)
     int + int   -> wider width (Short < Single < Integer < Long)
-    float + float -> wider (Float < Double)
+    float + float (mixed) -> Double
     int + float -> the float type, except Long + Float -> Double
                    (an f32 mantissa cannot hold 64-bit integers)
     """

@@ -430,16 +430,17 @@ class NumericValue(Value):
                 self.pos_end,
             )
         except Exception:
-            return None, RunTimeError(
+            return None, BSharpMathError(
                 self.pos_start,
                 self.pos_end,
-                "RUN106",
             )
         if isinstance(raw, complex):
-            return None, RunTimeError(
+            # A real base raised to a fractional power with no real result
+            # (e.g. (-1.0) ^ 0.5) is a math domain error, consistent with
+            # every other float-domain failure in this method.
+            return None, BSharpMathError(
                 self.pos_start,
                 self.pos_end,
-                "RUN106",
             )
         return self._finish(
             target,
@@ -449,24 +450,21 @@ class NumericValue(Value):
 
     def is_equal(self, other):
         if isinstance(other, (NumericValue, Boolean)):
-            other = self._to_number(other)
-            if not isinstance(other, NumericValue):
+            # Exact comparison shared with ordering: mixed int/float pairs
+            # compare via Fraction so a 64-bit Long never loses precision
+            # against a Double (== and < agree with each other).
+            order = _compare_numeric(self, other)
+            if order is None:
                 return Boolean(False), None
-            target = self._promote(other)
-            if _typesys.TYPES[target].kind == _typesys.INT:
-                return Boolean(int(self.value) == int(other.value)), None
-            return Boolean(float(self.value) == float(other.value)), None
+            return Boolean(order == 0), None
         return Boolean(False), None
 
     def not_equal(self, other):
         if isinstance(other, (NumericValue, Boolean)):
-            other = self._to_number(other)
-            if not isinstance(other, NumericValue):
+            order = _compare_numeric(self, other)
+            if order is None:
                 return Boolean(True), None
-            target = self._promote(other)
-            if _typesys.TYPES[target].kind == _typesys.INT:
-                return Boolean(int(self.value) != int(other.value)), None
-            return Boolean(float(self.value) != float(other.value)), None
+            return Boolean(order != 0), None
         return Boolean(True), None
 
     def less_than(self, other):
@@ -2240,11 +2238,10 @@ class Function(Value):
                     return res.failure(default_res.error)
                 arg_value = default_res.value
                 # A literal default (`x : Integer = 5`) narrows like a
-                # literal call argument. The parser only builds NumberNode
-                # defaults for numeric literal text.
-                from B_Sharp.ASTNodes.nodes import NumberNode
+                # literal call argument. Signed literals (`-5`) count too.
+                from B_Sharp.ASTNodes.nodes import is_signed_numeric_literal
 
-                from_literal = isinstance(param_default, NumberNode)
+                from_literal = is_signed_numeric_literal(param_default)
 
             # Full isolation: deep copy List/Array args so caller not mutated
             if isinstance(arg_value, (List, Array)):
@@ -2587,6 +2584,26 @@ class StructDefinition(Value):
                     value.set_pos(pos_start, pos_end)
                     value.set_context(exec_context)
                 # Otherwise the assign() below reports ASN005.
+            if (
+                isinstance(declared, type)
+                and issubclass(declared, Array)
+                and isinstance(value, List)
+            ):
+                # Collection conversion, consistent with function parameters
+                # and annotated variable declarations: a plain List argument
+                # is wrapped into the declared typed array (validated below).
+                spelling = variables[field_name].get("type_spelling")
+                value = declared(
+                    value.list_of_elements,
+                    depth=max(1, array_depth(spelling)) if spelling else 1,
+                )
+                if spelling:
+                    value.type_name = spelling
+                value.set_pos(pos_start, pos_end)
+                value.set_context(exec_context)
+                err = value._validate_all()
+                if err:
+                    return err
             value = commit_value(
                 value, member_cfg.get(field_name, call_cfg)
             )

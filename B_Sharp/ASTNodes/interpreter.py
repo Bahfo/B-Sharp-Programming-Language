@@ -149,23 +149,41 @@ class Interpreter:
         return converted, None
 
     def _type_numeric_literal(self, num_node, target_name, context, decl_node):
-        """Builds a NumberNode literal directly as the declared numeric type.
+        """Builds a signed numeric literal directly as the declared type.
 
-        Implements annotation narrowing (`var x : Integer = 5`):
-        kind-strict — an int literal narrows only into an int type (and
-        must fit the range), a float literal only into a float type.
-        Anything else is an ASN005 assignment error.
+        Implements annotation narrowing (`var x : Integer = 5`,
+        `var x : Short = -128`): kind-strict — an int literal narrows only
+        into an int type (and must fit the range), a float literal only
+        into a float type. Anything else is an ASN005 assignment error.
+
+        Consistent wrap rule: a literal whose own type already equals the
+        target (e.g. `200b` for `Short`) behaves exactly like its weak
+        declaration — the payload wraps/rounds into the type instead of
+        being range-rejected.
         """
-        raw = num_node.token.value
-        is_float = num_node.literal_type in _typesys.FLOAT_TYPE_NAMES
-        payload, reason = _typesys.context_literal(raw, is_float, target_name)
+        sign, raw_node = signed_literal_parts(num_node)
+        raw = raw_node.token.value
+        signed_raw = sign * raw
+        literal_type = getattr(raw_node, "literal_type", None) or (
+            "Double" if isinstance(raw, float) else "Long"
+        )
+        if literal_type == target_name:
+            payload = _typesys.normalize_payload(target_name, signed_raw)
+            return (
+                NUMERIC_CLASSES[target_name](payload)
+                .set_context(context)
+                .set_pos(num_node.pos_start, num_node.pos_end),
+                None,
+            )
+        is_float = literal_type in _typesys.FLOAT_TYPE_NAMES
+        payload, reason = _typesys.context_literal(signed_raw, is_float, target_name)
         if reason is not None:
             return None, AssignmentError(
                 decl_node.pos_start,
                 decl_node.pos_end,
                 "ASN005",
                 {
-                    "actual_type": num_node.literal_type,
+                    "actual_type": literal_type,
                     "expected_type": target_name,
                 },
             )
@@ -331,7 +349,13 @@ class Interpreter:
                         return res
                     result, error = left.or_(right)
         else:
-            result, error = left.and_(left) if is_and else left.or_(left)
+            # Symmetric operand validation: a non-Bool left operand reports
+            # the same CMP002/CMP003 as a non-Bool right operand, regardless
+            # of position (`5 and true` behaves like `true and 5`).
+            code = "CMP002" if is_and else "CMP003"
+            return res.failure(
+                ComparisonError(node.pos_start, node.pos_end, code)
+            )
 
         if error:
             return res.failure(error)
@@ -409,7 +433,7 @@ class Interpreter:
         elif (
             isinstance(data_type_class, type)
             and issubclass(data_type_class, NumericValue)
-            and isinstance(node.value, NumberNode)
+            and is_signed_numeric_literal(node.value)
         ):
             # Annotation narrowing: `var x : Integer = 5` types the
             # literal when it converts cleanly, else ASN005.
@@ -478,7 +502,7 @@ class Interpreter:
         elif (
             isinstance(data_type_class, type)
             and issubclass(data_type_class, NumericValue)
-            and isinstance(node.value, NumberNode)
+            and is_signed_numeric_literal(node.value)
         ):
             # Annotation narrowing for whole-value multi-binding
             # (`var a, b : Integer = 5`).
@@ -584,7 +608,7 @@ class Interpreter:
         if (
             isinstance(declared_type, type)
             and issubclass(declared_type, NumericValue)
-            and isinstance(node.value, NumberNode)
+            and is_signed_numeric_literal(node.value)
             and isinstance(value, NumericValue)
             and type(value) is not declared_type
         ):
@@ -1123,8 +1147,9 @@ class Interpreter:
             args.append(arg_val)
             arg_names.append(node.arg_names[i])
             # Numeric literal arguments may narrow into declared numeric
-            # parameter / field types (see Function.execute).
-            arg_is_literal.append(isinstance(arg_node, NumberNode))
+            # parameter / field types (see Function.execute). Signed
+            # literals (`-128`) count as literals.
+            arg_is_literal.append(is_signed_numeric_literal(arg_node))
 
         if isinstance(value_to_call, BuiltinFunction):
             # Builtins declare no parameters, so they take positional
@@ -1214,7 +1239,7 @@ class Interpreter:
             return_val = res.register(self.visit(node.node_to_return, context))
             if res.error:
                 return res
-            if isinstance(node.node_to_return, NumberNode):
+            if is_signed_numeric_literal(node.node_to_return):
                 # A literal in return position may narrow into a declared
                 # numeric return type (see Function.execute). The value is
                 # freshly built by visit_NumberNode, so marking it is safe.
@@ -2069,7 +2094,7 @@ class Interpreter:
             if (
                 isinstance(declared, type)
                 and issubclass(declared, NumericValue)
-                and isinstance(node.value, NumberNode)
+                and is_signed_numeric_literal(node.value)
                 and isinstance(val, NumericValue)
                 and type(val) is not declared
             ):
