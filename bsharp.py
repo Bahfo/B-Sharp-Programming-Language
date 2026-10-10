@@ -18,10 +18,6 @@ from B_Sharp.CodeExecution.caller_macros import (
 )
 
 
-
-# Here are some changes
-
-
 def run_source(file_name, source_text, context=None, measure_time=False):
     """
     Executes B_Sharp source text through frontend parser and AST Interpreter.

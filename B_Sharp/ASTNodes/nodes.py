@@ -1,5 +1,7 @@
 import math
 
+from B_Sharp.tokens import TOKEN_MINUS, TOKEN_PLUS
+
 
 class NumberNode:
     def __init__(self, token):
@@ -456,3 +458,38 @@ class PropertyAssignNode:
 
     def __repr__(self):
         return f"{self.target}.{self.property_name} = {self.value}"
+
+
+def is_signed_numeric_literal(node):
+    """True when `node` is a numeric literal with an optional unary sign.
+
+    Covers `5`, `5b`, `3.14` as well as `-128`, `- -5`, `+5`: a NumberNode
+    wrapped in any chain of unary minus/plus operators. Narrowing sites use
+    this (instead of a bare NumberNode check) so negative literals narrow
+    exactly like their positive counterparts.
+    """
+    current = node
+    while (
+        isinstance(current, UnaryOpNode)
+        and getattr(current.op_token, "type", None) in (TOKEN_MINUS, TOKEN_PLUS)
+    ):
+        current = current.node
+    return isinstance(current, NumberNode)
+
+
+def signed_literal_parts(node):
+    """Unfolds a signed literal into (sign, NumberNode).
+
+    `sign` is +1 or -1 (chains of minuses fold). Callers must only pass
+    nodes for which `is_signed_numeric_literal` is True.
+    """
+    sign = 1
+    current = node
+    while (
+        isinstance(current, UnaryOpNode)
+        and getattr(current.op_token, "type", None) in (TOKEN_MINUS, TOKEN_PLUS)
+    ):
+        if current.op_token.type == TOKEN_MINUS:
+            sign = -sign
+        current = current.node
+    return sign, current
