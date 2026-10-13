@@ -70,7 +70,9 @@ def run_file(file_path, measure_time=False):
         print(f"Error reading file '{file_path}': {e}")
         sys.exit(1)
 
-    value, error, elapsed_time = run_source(file_path, source_text, measure_time=measure_time)
+    value, error, elapsed_time = run_source(
+        file_path, source_text, measure_time=measure_time
+    )
 
     if error:
         print(error)
@@ -130,7 +132,36 @@ if __name__ == "__main__":
             print_usage()
             sys.exit(1)
 
+        from B_Sharp.Backend.driver import build_file, BuildError
+
         source_file = args[1]
+        rest = args[2:]
+        output = None
+        keep_d = False
+        compiler = None
+        i = 0
+        while i < len(rest):
+            if rest[i] in ("-o", "--output") and i + 1 < len(rest):
+                output = rest[i + 1]
+                i += 2
+            elif rest[i] == "--keep-d":
+                keep_d = True
+                i += 1
+            elif rest[i] == "--compiler" and i + 1 < len(rest):
+                compiler = rest[i + 1]
+                i += 2
+            else:
+                print(f"Error: Unknown build option '{rest[i]}'")
+                sys.exit(1)
+
+        try:
+            exe_path, d_path = build_file(
+                source_file, output_path=output, keep_d=keep_d, compiler=compiler
+            )
+        except BuildError as e:
+            print(f"Build failed: {e}")
+            sys.exit(1)
+        print(f"Built {exe_path} (D: {d_path})")
     else:
         measure_time = False
         if "--measure" in args:
