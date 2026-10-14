@@ -361,6 +361,9 @@ class MethodCallNode:
             arg_nodes[-1].pos_end if arg_nodes else method_name_tok.pos_end
         )
 
+    def __repr__(self):
+        return f"{self.object_node} : {self.method_name_tok} : {self.arg_nodes}"
+
 
 class ImportNode:
     def __init__(self, module_to_import, symbols, pos_start, pos_end=None):
@@ -368,6 +371,9 @@ class ImportNode:
         self.pos_start = pos_start
         self.symbols = symbols
         self.pos_end = pos_end
+
+    def __repr__(self):
+        return f"using {self.module_to_import} : {self.symbols}"
 
 
 class NaNNode:
@@ -460,6 +466,16 @@ class PropertyAssignNode:
         return f"{self.target}.{self.property_name} = {self.value}"
 
 
+class ContainerNode:
+    def __init__(self, pos_start, pos_end, body_node):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        self.body_node = body_node
+
+    def __repr__(self):
+        return f"container {self.body_node}"
+
+
 def is_signed_numeric_literal(node):
     """True when `node` is a numeric literal with an optional unary sign.
 
@@ -469,10 +485,9 @@ def is_signed_numeric_literal(node):
     exactly like their positive counterparts.
     """
     current = node
-    while (
-        isinstance(current, UnaryOpNode)
-        and getattr(current.op_token, "type", None) in (TOKEN_MINUS, TOKEN_PLUS)
-    ):
+    while isinstance(current, UnaryOpNode) and getattr(
+        current.op_token, "type", None
+    ) in (TOKEN_MINUS, TOKEN_PLUS):
         current = current.node
     return isinstance(current, NumberNode)
 
@@ -485,10 +500,9 @@ def signed_literal_parts(node):
     """
     sign = 1
     current = node
-    while (
-        isinstance(current, UnaryOpNode)
-        and getattr(current.op_token, "type", None) in (TOKEN_MINUS, TOKEN_PLUS)
-    ):
+    while isinstance(current, UnaryOpNode) and getattr(
+        current.op_token, "type", None
+    ) in (TOKEN_MINUS, TOKEN_PLUS):
         if current.op_token.type == TOKEN_MINUS:
             sign = -sign
         current = current.node
