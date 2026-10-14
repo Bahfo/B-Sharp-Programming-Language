@@ -2604,9 +2604,7 @@ class StructDefinition(Value):
                 err = value._validate_all()
                 if err:
                     return err
-            value = commit_value(
-                value, member_cfg.get(field_name, call_cfg)
-            )
+            value = commit_value(value, member_cfg.get(field_name, call_cfg))
             _, err = exec_context.variables.assign(
                 field_name, value, pos_start, pos_end
             )
@@ -2662,6 +2660,18 @@ class StructInstance(Value):
             f"{k}: {v['value']}" for k, v in self.environment.variables.items()
         )
         return f"{self.struct_name} {{ {fields} }}"
+
+
+class Container(Value):
+    def __init__(self, name, value, pos_start=None, pos_end=None):
+        self.name = name
+        self.value = value
+
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+        self.set_pos()
+        self.set_context()
 
 
 _ARRAY_CLASSES = {

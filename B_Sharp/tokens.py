@@ -126,6 +126,7 @@ KEYWORDS = [
     "continue",
     "function",
     "Function",
+    "container",
 ]
 
 # Predefined Language Special Keywords
