@@ -18,6 +18,10 @@ class BuildError(Exception):
     pass
 
 
+RUNTIME_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Runtime")
+RUNTIME_SOURCES = [os.path.join(RUNTIME_DIR, "bsruntime.d")]
+
+
 def find_d_compiler(hint=None):
     env = os.environ.get("BSHARP_D_COMPILER")
     for cand in (hint, env, "ldc2", "dmd"):
@@ -51,9 +55,13 @@ def build_file(source_path, output_path=None, keep_d=False, compiler=None):
     with open(d_path, "w", encoding="utf-8") as f:
         f.write(dcode)
 
+    for src in RUNTIME_SOURCES:
+        if not os.path.exists(src):
+            raise BuildError(f"backend runtime missing: {src}")
+
     comp = find_d_compiler(compiler)
 
-    cmd = [comp, d_path, f"-of={exe_path}"]
+    cmd = [comp, d_path, *RUNTIME_SOURCES, f"-of={exe_path}"]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise BuildError(f"{comp} failed:\n{proc.stdout}\n{proc.stderr}")

@@ -83,6 +83,7 @@ TYPE_KEYWORDS = [
 
 # All Keywords
 KEYWORDS = [
+    "is",
     "do",
     "or",
     "if",
