@@ -121,7 +121,7 @@ def print_usage():
     print("  bsharp build <file.bsharp> [opts]  Compile file to native executable")
 
 
-if __name__ == "__main__":
+def main():
     args = sys.argv[1:]
 
     if not args:
@@ -158,6 +158,9 @@ if __name__ == "__main__":
             exe_path, d_path = build_file(
                 source_file, output_path=output, keep_d=keep_d, compiler=compiler
             )
+        except KeyboardInterrupt:
+            print("\nBuild interrupted by user.", file=sys.stderr)
+            sys.exit(130)
         except BuildError as e:
             print(f"Build failed: {e}")
             sys.exit(1)
@@ -172,7 +175,19 @@ if __name__ == "__main__":
             args.remove("-m")
 
         if args:
-            run_file(args[0], measure_time=measure_time)
+            try:
+                run_file(args[0], measure_time=measure_time)
+            except KeyboardInterrupt:
+                print("\nExecution interrupted by user.", file=sys.stderr)
+                sys.exit(130)
         else:
             print("Error: No file specified.")
             sys.exit(1)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nInterrupted. Exiting B_Sharp.", file=sys.stderr)
+        sys.exit(130)

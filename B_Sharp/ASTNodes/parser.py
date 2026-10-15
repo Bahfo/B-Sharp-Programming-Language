@@ -147,10 +147,7 @@ class Parser:
             res.register_forward()
             self.forward()
 
-            if (
-                var_tok.value == "cast"
-                and self.current_token.type == TOKEN_LPAREN
-            ):
+            if var_tok.value == "cast" and self.current_token.type == TOKEN_LPAREN:
                 return self._cast_expression(res, var_tok)
 
             if self.current_token.type in (TOKEN_INC, TOKEN_DEC):
@@ -678,10 +675,13 @@ class Parser:
         return res.success(left)
 
     def and_expression(self):
-        return self.binary_operation(self.comparison, ("and",))
+        return self.binary_operation(self.is_expression, ("and",))
 
     def or_expression(self):
         return self.binary_operation(self.and_expression, ("or",))
+
+    def is_expression(self):
+        return self.binary_operation(self.comparison, ("is",))
 
     def expression(self):
         return self.or_expression()

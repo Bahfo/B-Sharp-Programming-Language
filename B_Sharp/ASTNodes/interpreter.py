@@ -235,9 +235,7 @@ class Interpreter:
             elements.append(value)
 
         return res.success(
-            Tuple(elements)
-            .set_context(context)
-            .set_pos(node.pos_start, node.pos_end)
+            Tuple(elements).set_context(context).set_pos(node.pos_start, node.pos_end)
         )
 
     def visit_BinaryOpNode(self, node, context):
@@ -267,7 +265,7 @@ class Interpreter:
             TOKEN_GT,
             TOKEN_LTE,
             TOKEN_GTE,
-        ):
+        ) or (node.op_token.type == TOKEN_KEYWORD and node.op_token.value == "is"):
             # Comparisons judge the precision-owned values: operands
             # come to rest at N decimals first, so (0.1 + 0.2) == 0.3
             # is true and chains like 1.0/3.0*3.0 compare as 1.0.
@@ -310,6 +308,8 @@ class Interpreter:
             result, error = left.greater_than_equal(right)
         elif node.op_token.type == TOKEN_MODULO:
             result, error = left.modulo_division(right)
+        elif node.op_token.type == TOKEN_KEYWORD and node.op_token.value == "is":
+            result, error = left.is_equal(right)
         else:
             result, error = None, RunTimeError(
                 node.op_token.pos_start,
@@ -353,9 +353,7 @@ class Interpreter:
             # the same CMP002/CMP003 as a non-Bool right operand, regardless
             # of position (`5 and true` behaves like `true and 5`).
             code = "CMP002" if is_and else "CMP003"
-            return res.failure(
-                ComparisonError(node.pos_start, node.pos_end, code)
-            )
+            return res.failure(ComparisonError(node.pos_start, node.pos_end, code))
 
         if error:
             return res.failure(error)
@@ -752,13 +750,9 @@ class Interpreter:
             else:
                 converted = String(render_value(value, self._cfg(node)))
             return res.success(
-                converted.set_context(context).set_pos(
-                    node.pos_start, node.pos_end
-                )
+                converted.set_context(context).set_pos(node.pos_start, node.pos_end)
             )
-        converted, error = convert_scalar(
-            value, target, node.pos_start, node.pos_end
-        )
+        converted, error = convert_scalar(value, target, node.pos_start, node.pos_end)
         if error:
             return res.failure(error)
         return res.success(
@@ -1424,9 +1418,7 @@ class Interpreter:
 
         if not index_nodes:
             # Defensive: parser only builds index chains for assignment
-            return res.failure(
-                RunTimeError(node.pos_start, node.pos_end, "RUN014")
-            )
+            return res.failure(RunTimeError(node.pos_start, node.pos_end, "RUN014"))
 
         container = res.register(self.visit(cursor, context))
         if res.error:
@@ -1453,9 +1445,7 @@ class Interpreter:
         value = commit_value(value, self._cfg(node))
 
         if isinstance(container, Tuple):
-            return res.failure(
-                RunTimeError(node.pos_start, node.pos_end, "RUN139")
-            )
+            return res.failure(RunTimeError(node.pos_start, node.pos_end, "RUN139"))
 
         if isinstance(container, (List, Array)):
             i, err = self._require_int(index_val, node)
@@ -1527,9 +1517,7 @@ class Interpreter:
             return res.failure(
                 RunTimeError(idx_node.pos_start, idx_node.pos_end, "RUN013")
             )
-        return res.failure(
-            RunTimeError(idx_node.pos_start, idx_node.pos_end, "RUN014")
-        )
+        return res.failure(RunTimeError(idx_node.pos_start, idx_node.pos_end, "RUN014"))
 
     def _vivify_slot(self, parent, i, idx_node, context):
         """Grows `parent` at index `i` with a fresh empty row and returns it."""
@@ -1847,9 +1835,7 @@ class Interpreter:
             args.append(arg_val)
 
         if isinstance(obj, Tuple):
-            return res.failure(
-                RunTimeError(node.pos_start, node.pos_end, "RUN139")
-            )
+            return res.failure(RunTimeError(node.pos_start, node.pos_end, "RUN139"))
 
         if not isinstance(obj, (List, Array)):
             return res.failure(
