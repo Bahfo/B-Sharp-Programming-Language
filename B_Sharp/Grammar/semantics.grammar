@@ -1,0 +1,181 @@
+*****************************************************************************
+*      (C) COPYRIGHT 2026 EXcellent TechStacks - All Rights Reserved        *
+*           Semantic Grammars for B-Sharp Programming Language              *
+*****************************************************************************
+
+  Grammar files notations follow the standard EBNF wirth-style
+  notations. UPPER_CASE names are emitted of a KEYWORD/IDENTIFIER/
+  MACRO/PREPROC token. The language is case-sensitive throughout.
+
+
+  Notation Format: 
+  =         defines a rule
+  |         alternation / alternative
+  .         terminates a rule
+  ,         then / after / comes next
+  [ x ]     optional (zero or more of)
+  { x }     repetition (zero or more of)
+  ( x )     grouping
+  "abc"     literal characters in the source text
+  ->        into
+  (* *)     comments in .grammar files
+
+
+------------------------------ INPUT STRUCTURE -------------------------------
+
+source_file    = { blank | comment | token } EOF .
+blank          = " " | "\t" | "\x0b" | "\x0c" | "\r" .
+
+comment        = line_comment | block_comment
+line_comment   = "//" , { ANY TEXT }
+block_comment  = "/*" , { blank | ANY TEXT | EOL } , "*/" .
+
+identifier     = letter , { letter | digit }
+letter         = "A" -> "Z"  | "a" -> "z" | "_" .
+digit          = "0" -> "9"
+
+keyword        = "is" | "do" | "or" | "if" | "fn" | "try" | "var" | 
+               | "for" | "not" | "inf" | "nan" | "else" | "elif" | 
+               | "then" | "none" | "pass" | "true" | "false" | 
+               | "catch" | "using" | "break" | "const" | "while" 
+               | "return" | "struct" | "pragma" | "continue" | 
+               | "function" | "container" | "self" .
+
+type_keyword   = "Inf" | "NaN" | "List" | "Bool" | "Long" | "Char"
+               | "Empty" | "Tuple" | "Short" | "Float" | "Single"
+               | "Double" | "String" | "Integer" | "Function" .
+
+int_literal    = digits , [ int_suffix ] .
+float_literal  = digits , "." , digits , [ exponent ] , [ float_suffix ]
+               | digits , exponent , [ float_suffix ] .
+digits         = digit , { digit } .
+exponent       = ( "e" | "E" ) , [ "+" | "-" ] , digits .
+int_suffix      = "i" | "s" | "b" | "L" .
+               | "I" | "S" | "B" .
+float_suffix   = "f" | "D" | "F" .
+
+string_literal = '"' , { string_char } , '"' .
+string_char    = escape | any_char_except_quote_backslash_newline .
+escape         = "\\" , ( "n" | "t" | "r" | "\\" | '"' | "'" ) .
+
+char_literal   = "'" , ( escape | single_char ) , "'" .
+
+--------------------------------- OPERATORS ----------------------------------
+"+"  PLUS              "-"  MINUS       "*"  MUL         "/"  DIV
+"%"  IDIV              "~"  MODULO      "^"  POWER
+"==" EQUAL_EQUAL       "!=" NOT_EQUAL   "<"  LESS_THAN   ">"  GREATER_THAN 
+"<=" LESS_THAN_EQUAL   ">=" GREATER_THAN_EQUAL
+"++" INC               "--" DEC         "->" ARROW
+"="  EQ                ":"  COLON       "::"  DCOLON     ","  COMMA
+"("  LPAREN            ")"  RPAREN      "["  LBRACKET    "]"  RBRACKET
+"{"  LCURLY            "}"  RCURLY      "."  DOT         ".." DOTDOT
+"\n" NEWLINE           ";"  EOL
+
+caller_macro    = "!" , MACRO_NAME
+preproc_macro   = "[" , "#" , ( "ifdef" | "ifver" | "endif" | "define" ) , "]"
+preproc_os      = "__GNU_LINUX" | "__NT_KERNEL" | "__DARWIN" .
+
+-------------------------------- TOKENS_TYPES --------------------------------
+   INT, FLOAT, PLUS, MINUS, MUL, DIV, IDIV, MODULO, POWER, INC, DEC, ARROW, 
+   KEYWORD, IDENTIFIER, EQ, COLON, DCOLON, COMMA, EQUAL_EQUAL, LESS_THAN, 
+   GREATER_THAN, LESS_THAN_EQUAL, GREATER_THAN_EQUAL, NOT_EQUAL, NEWLINE, 
+   SEMICOLON, LCURLY, RCURLY, LBRACKET, RBRACKET, STRING, CHAR, DOT, DOTDOT,
+   ELLIPSIS, MACRO, PREPROC, PREDEFINED, EOF.
+
+--------------------------------- STATEMENTS --------------------------------
+statement     = macro_stmt | preproc_stmt
+              | "pass" | "break" | "continue"
+              | var_decl | fn_def | return_stmt
+              | if_stmt | while_stmt | do_stmt | for_stmt
+              | using_stmt | try_stmt | struct_def | container_def
+              | self_stmt
+              | increment_stmt
+              | IDENTIFIER , EQ , expression
+              | assignable , EQ , expression    (* index/property/
+                                                container/self write *)
+              | expression .
+
+var_decl      = ( "var" | "const" ) , IDENTIFIER , { "," , IDENTIFIER } ,
+                [ ":" , type ] , [ EQ , ( var_decl | expression ) ] .
+
+type          = type_base , [ tuple_params ] , { "[" , "]" } .
+type_base     = KEYWORD | IDENTIFIER .   (* spelling checked later *)
+tuple_params  = "(" , [ tuple_slot , { "," , tuple_slot } , [ "," ] ] , ")" .
+tuple_slot    = [ INT , ":" ] , type .
+
+fn_def        = ( "fn" | "function" ) , IDENTIFIER ,
+                "(" , [ param , { "," , param } ] , ")" ,
+                [ "->" , type ] , block .
+param         = IDENTIFIER , [ ":" , type ] , [ EQ , expression ] .
+
+return_stmt   = "return" , [ expression , { "," , expression } , [ "," ] ] .
+
+increment_stmt = ( INC | DEC ) , IDENTIFIER .   (* prefix ++i / --i *)
+
+struct_def    = "struct" , IDENTIFIER , "{" , { var_decl } , "}" .
+
+container_def = "container" , IDENTIFIER , "{" , { statement } , "}" .
+self_stmt     = "self" , ( "." , IDENTIFIER , [ "(" , arguments , ")" | EQ ,
+                expression ] )
+
+expression    = or_expr .
+or_expr       = and_expr , { "or" , and_expr } .
+and_expr      = is_expr , { "and" , is_expr } .
+is_expr       = comparison , { "is" , comparison } .
+comparison    = term , [ comparison_op , term ] .
+comparison_op = "==" | "!=" | "<" | ">" | "<=" | ">=" .
+
+term          = factor , { ( PLUS | MINUS ) , factor } .
+factor        = unary , { ( MUL | DIV | IDIV | MODULO ) , unary } .
+
+unary         = ( PLUS | MINUS | "not" ) , unary | power .
+power         = postfix , [ POWER , unary ] .   (* right-associative *)
+postfix       = atom , { call_suffix | index_suffix | dot_suffix
+                       | dcolon_suffix } .
+
+call_suffix   = "(" , [ argument , { "," , argument } ] , ")" .
+argument      = [ IDENTIFIER , EQ ] , expression .
+
+index_suffix  = "[" , [ expression ] ,
+                [ DOTDOT , [ expression ] ] , "]" .
+
+dot_suffix    = DOT , IDENTIFIER , [ "(" , arguments , ")" ] .
+
+dcolon_suffix = "::" , IDENTIFIER , { "::" , IDENTIFIER } .
+
+atom          = INT | FLOAT | STRING | CHAR
+              | "true" | "false" | "none" | "nan" | "inf"
+              | "self" | IDENTIFIER
+              | IDENTIFIER , ( INC | DEC )        (* postfix i++/i-- *)
+              | "cast" , "(" , expression , "," , type_name , ")"
+              | "(" , [ expression , { "," , expression } , [ "," ] ] , ")"
+              | "[" , [ expression , { "," , expression } , [ "," ] ] , "]"
+              | if_expr | preproc_ifver .
+
+if_expr       = "if" , expression ,
+                ( block | "then" , statement ) ,
+                { "elif" , expression , ( block | "then" , statement ) } ,
+                [ "else" , ( block | "then" , statement | statement ) ] .
+
+while_stmt    = "while" , expression , ( block | "then" , statement ) .
+
+do_stmt       = "do" , block , "while" , "(" , expression , ")" .
+
+for_stmt      = "for" , "(" , statement , ";" , expression , ";" ,
+                statement , ")" , ( block | "then" , statement ) .
+
+using_stmt    = "using" , STRING .
+
+jump_stmt     = "break" | "continue" | "pass" .
+
+try_stmt      = "try" , "{" , statements , "}" ,
+                catch_clause , { catch_clause } .
+catch_clause  = "catch" , "(" , error_type , [ IDENTIFIER ] , ")" , block .
+error_type    = IDENTIFIER | KEYWORD .
+
+*****************************************************************************
+* These grammar codes define the structure and basic lexical syntax of the  *
+* B-Sharp Programming Language. These do not define the language's specs or *
+* the language behaves at certain code samples.                             *
+*                       The B-Sharp Programming Language                    *
+*****************************************************************************

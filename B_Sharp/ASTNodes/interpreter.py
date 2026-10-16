@@ -60,6 +60,14 @@ class Interpreter:
         self.current_call_depth = 0
         self.loaded_modules = {}
         self.loading_modules = set()
+        # Active `self` owners: ContainerScope entries pushed while a
+        # container initializes or one of its methods executes, None
+        # sentinels pushed for ordinary function calls so nested
+        # functions do not inherit `self`.
+        self._self_stack = []
+        # Set while a container's direct definition statement executes:
+        # (owner ContainerScope, member-exec Context) or None.
+        self._member_def = None
 
     def _cfg(self, node):
         """Per-file config for the module a node textually belongs to."""
@@ -407,12 +415,34 @@ class Interpreter:
         )
 
         if error:
+            # A bare container name is never a value — upgrade the lookup
+            # miss to an explicit container-misuse error.
+            if var_name in self._registry_for(context):
+                return result.failure(
+                    RunTimeError(
+                        node.pos_start,
+                        node.pos_end,
+                        "RUN145",
+                        {"name": var_name},
+                    )
+                )
             return result.failure(error)
         return result.success(value)
 
     def visit_VariableAssignNode(self, node, context):
         res = RunTimeResult()
         var_name = node.name.value
+
+        if self._member_def is None and self._is_root_context(context):
+            if var_name in self._registry_for(context):
+                return res.failure(
+                    AssignmentError(
+                        node.pos_start,
+                        node.pos_end,
+                        "ASN001",
+                        {"name": var_name},
+                    )
+                )
 
         is_implicit = node.value is None
 
@@ -482,6 +512,19 @@ class Interpreter:
 
     def visit_MultiVariableAssignNode(self, node, context):
         res = RunTimeResult()
+
+        if self._member_def is None and self._is_root_context(context):
+            registry = self._registry_for(context)
+            for name_tok in node.names:
+                if name_tok.value in registry:
+                    return res.failure(
+                        AssignmentError(
+                            name_tok.pos_start,
+                            name_tok.pos_end,
+                            "ASN001",
+                            {"name": name_tok.value},
+                        )
+                    )
 
         is_implicit = node.value is None
 
@@ -973,12 +1016,41 @@ class Interpreter:
         arg_nodes = node.arg_nodes
         return_type_tok = node.return_type_tok
 
+        # A function defined directly in a container body is a method owned
+        # by that container. It closes over the definition-site scope (so
+        # bare names never implicitly see container members) and binds
+        # `self` to its owner at call time. Its binding is immutable.
+        container_owner = None
+        func_is_const = False
+        if (
+            self._member_def is not None
+            and self._member_def[1] is context
+            and isinstance(node, FunctionDefNode)
+        ):
+            container_owner = self._member_def[0]
+            func_is_const = True
+        elif self._member_def is None and self._is_root_context(context):
+            if func_name in self._registry_for(context):
+                return res.failure(
+                    AssignmentError(
+                        node.var_name_tok.pos_start,
+                        node.var_name_tok.pos_end,
+                        "ASN001",
+                        {"name": func_name},
+                    )
+                )
+
         func_value = Function(
             name=func_name,
             body_node=body_node,
             arg_nodes=arg_nodes,
             return_type_tok=return_type_tok,
-            parent_context=context,
+            parent_context=(
+                container_owner.definition_context
+                if container_owner is not None
+                else context
+            ),
+            container_owner=container_owner,
         ).set_pos(node.pos_start, node.pos_end)
 
         # F1: if promised return type, body must guarantee a `return <value>` on
@@ -1106,7 +1178,7 @@ class Interpreter:
             name=func_name,
             data_type=Function,
             value=func_value,
-            is_const=False,
+            is_const=func_is_const,
         )
 
         if error:
@@ -1116,6 +1188,18 @@ class Interpreter:
 
     def visit_CallNode(self, node, context):
         res = RunTimeResult()
+
+        inner = node.node_to_call
+        if isinstance(inner, VariableAccessNode):
+            if inner.name.value in self._registry_for(context):
+                return res.failure(
+                    RunTimeError(
+                        node.pos_start,
+                        node.pos_end,
+                        "RUN148",
+                        {"name": inner.name.value},
+                    )
+                )
 
         value_to_call = res.register(self.visit(node.node_to_call, context))
         if res.error:
@@ -1198,6 +1282,10 @@ class Interpreter:
             )
 
         self.current_call_depth += 1
+        # Bind `self` for the callee: its owning container for methods, a
+        # None sentinel for ordinary functions so nested functions never
+        # inherit an enclosing method's `self`.
+        self._self_stack.append(getattr(value_to_call, "container_owner", None))
         try:
             return_value = res.register(
                 value_to_call.execute(
@@ -1210,6 +1298,7 @@ class Interpreter:
                 )
             )
         finally:
+            self._self_stack.pop()
             self.current_call_depth -= 1
 
         if res.error:
@@ -1638,7 +1727,7 @@ class Interpreter:
             )
         )
 
-    def _load_module(self, node, res, file_path):
+    def _load_module(self, node, res, file_path, importer_context=None):
         """Lexes, parses and executes a module exactly once.
 
         Returns the module's root Context (registered in loaded_modules)
@@ -1706,8 +1795,15 @@ class Interpreter:
 
         # The module gets its own isolated root scope: it can neither see
         # nor shadow the importer's globals.
-        import_context = Context(file_path)
+        import_context = Context(file_path, is_program_root=True)
         register_builtins(import_context)
+        if importer_context is not None:
+            # Singleton containers live in one program-global registry so
+            # an imported module's containers initialize once and stay
+            # visible by qualified name without rerunning on re-import.
+            import_context.container_registry = self._registry_for(
+                importer_context
+            )
 
         self.loading_modules.add(file_path)
         interpreter = Interpreter()
@@ -1747,7 +1843,7 @@ class Interpreter:
                 )
             )
 
-        module_context = self._load_module(node, res, file_path)
+        module_context = self._load_module(node, res, file_path, context)
         if module_context is None:
             return res
 
@@ -2025,10 +2121,28 @@ class Interpreter:
     def visit_StructDefNode(self, node, context):
         res = RunTimeResult()
         struct_name = node.name.value
+        in_container_member = (
+            self._member_def is not None and self._member_def[1] is context
+        )
+        if not in_container_member and self._member_def is None:
+            if self._is_root_context(context):
+                if struct_name in self._registry_for(context):
+                    return res.failure(
+                        AssignmentError(
+                            node.pos_start,
+                            node.pos_end,
+                            "ASN001",
+                            {"name": struct_name},
+                        )
+                    )
         struct_def = StructDefinition(
             name=struct_name,
             member_nodes=node.member_nodes,
-            parent_context=context,
+            parent_context=(
+                self._member_def[0].definition_context
+                if in_container_member
+                else context
+            ),
         ).set_pos(node.pos_start, node.pos_end)
 
         _, error = context.variables.set_pos(node.pos_start, node.pos_end).define(
@@ -2041,6 +2155,377 @@ class Interpreter:
             return res.failure(error)
 
         return res.success(struct_def)
+
+    ################################################################
+    # Containers
+    ################################################################
+
+    def _registry_for(self, context):
+        """Program-global container registry, anchored at the root context.
+
+        The dict is shared with imported modules (see _load_module) so a
+        container initializes exactly once per program, and persists across
+        REPL lines via the shared root context.
+        """
+        root = context
+        while getattr(root, "parent", None) is not None:
+            root = root.parent
+        registry = getattr(root, "container_registry", None)
+        if registry is None:
+            registry = {}
+            root.container_registry = registry
+        return registry
+
+    @staticmethod
+    def _is_root_context(context):
+        """True for program/module roots (never for function/loop/block scopes)."""
+        return bool(getattr(context, "is_program_root", False)) or (
+            getattr(context, "parent", None) is None
+            and getattr(context, "container_scope", None) is None
+        )
+
+    def _unregister_container_tree(self, registry, qualified):
+        """Removes a container and its nested children (failed init)."""
+        prefix = qualified + "::"
+        for key in [k for k in registry if k == qualified or k.startswith(prefix)]:
+            del registry[key]
+
+    def _resolve_container_path(self, path_toks, registry):
+        """Resolves `A::B::member` to (owner_scope, member_name, entry).
+
+        Every intermediate segment must be a nested container; the final
+        segment must be an ordinary member. Returns
+        (None, None, None, error) on failure.
+        """
+        first = path_toks[0]
+        scope = registry.get(first.value)
+        if scope is None:
+            return None, None, None, RunTimeError(
+                first.pos_start, first.pos_end, "RUN146", {"name": first.value}
+            )
+        for tok in path_toks[1:-1]:
+            child = scope.children.get(tok.value)
+            if child is None:
+                if tok.value in scope.members.variables:
+                    return None, None, None, RunTimeError(
+                        tok.pos_start, tok.pos_end, "RUN146", {"name": tok.value}
+                    )
+                return None, None, None, RunTimeError(
+                    tok.pos_start,
+                    tok.pos_end,
+                    "RUN147",
+                    {"member": tok.value, "container": scope.qualified_name},
+                )
+            scope = child
+        last = path_toks[-1]
+        if last.value in scope.children:
+            return None, None, None, RunTimeError(
+                last.pos_start,
+                last.pos_end,
+                "RUN145",
+                {"name": scope.child_qualified(last.value)},
+            )
+        entry = scope.members.variables.get(last.value)
+        if entry is None:
+            return None, None, None, RunTimeError(
+                last.pos_start,
+                last.pos_end,
+                "RUN147",
+                {"member": last.value, "container": scope.qualified_name},
+            )
+        return scope, last.value, entry, None
+
+    def _current_self_scope(self, node):
+        """Innermost owning container for `self`, or (None, error)."""
+        if not self._self_stack or self._self_stack[-1] is None:
+            return None, RunTimeError(node.pos_start, node.pos_end, "RUN149", {})
+        return self._self_stack[-1], None
+
+    def _assign_container_member(self, scope, member_name, value_node, node, context):
+        """Shared `Container::m = v` / `self.m = v` write path."""
+        res = RunTimeResult()
+        if member_name in scope.children:
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    "RUN145",
+                    {"name": scope.child_qualified(member_name)},
+                )
+            )
+        entry = scope.members.variables.get(member_name)
+        if entry is None:
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    "RUN147",
+                    {"member": member_name, "container": scope.qualified_name},
+                )
+            )
+        if entry.get("kind") in (ContainerScope.FUNC, ContainerScope.STRUCT):
+            return res.failure(
+                ModificationError(
+                    node.pos_start,
+                    node.pos_end,
+                    "MOD005",
+                    {"member": member_name, "container": scope.qualified_name},
+                )
+            )
+        val = res.register(self.visit(value_node, context))
+        if res.error:
+            return res
+        declared = entry["type"]
+        if (
+            isinstance(declared, type)
+            and issubclass(declared, NumericValue)
+            and is_signed_numeric_literal(value_node)
+            and isinstance(val, NumericValue)
+            and type(val) is not declared
+        ):
+            converted, conv_err = self._narrow_literal_value(
+                val, declared, value_node, context
+            )
+            if conv_err is None:
+                val = converted
+        val = commit_value(val, self._cfg(node))
+        assigned, err = scope.members.set_pos(
+            node.pos_start, node.pos_end
+        ).assign(member_name, val)
+        if err:
+            return res.failure(err)
+        return res.success(assigned)
+
+    def visit_ContainerDefNode(self, node, context):
+        res = RunTimeResult()
+        name = node.name.value
+
+        if self._member_def is not None:
+            # Nested container: direct child of another container body.
+            parent_scope = self._member_def[0]
+            definition_context = parent_scope.definition_context
+            if (
+                name in parent_scope.children
+                or name in parent_scope.members.variables
+            ):
+                return res.failure(
+                    AssignmentError(
+                        node.name.pos_start,
+                        node.name.pos_end,
+                        "ASN001",
+                        {"name": name},
+                    )
+                )
+            qualified = parent_scope.child_qualified(name)
+            registry = self._registry_for(definition_context)
+            if qualified in registry:
+                return res.failure(
+                    AssignmentError(
+                        node.name.pos_start,
+                        node.name.pos_end,
+                        "ASN001",
+                        {"name": name},
+                    )
+                )
+        else:
+            # Top level: parser enforces placement; recheck here as backstop.
+            if not self._is_root_context(context):
+                return res.failure(
+                    B_SharpSyntaxError(node.pos_start, node.pos_end, "SYN088")
+                )
+            parent_scope = None
+            definition_context = context
+            registry = self._registry_for(context)
+            if name in registry or name in context.variables.variables:
+                return res.failure(
+                    AssignmentError(
+                        node.name.pos_start,
+                        node.name.pos_end,
+                        "ASN001",
+                        {"name": name},
+                    )
+                )
+            qualified = name
+
+        new_scope = ContainerScope(
+            name,
+            qualified,
+            parent_scope,
+            definition_context.variables,
+            node.pos_start,
+            node.pos_end,
+        )
+        new_scope.definition_context = definition_context
+        exec_ctx = Context(
+            f"<container {qualified}>",
+            parent=definition_context,
+            container_scope=new_scope,
+        )
+        new_scope.init_context = exec_ctx
+
+        # Register before init so self-qualified refs resolve during init.
+        registry[qualified] = new_scope
+        if parent_scope is not None:
+            parent_scope.children[name] = new_scope
+
+        self._self_stack.append(new_scope)
+        try:
+            for stmt in node.member_nodes:
+                if isinstance(stmt, ContainerDefNode):
+                    saved = self._member_def
+                    self._member_def = (new_scope, exec_ctx)
+                    try:
+                        r = self.visit(stmt, definition_context)
+                    finally:
+                        self._member_def = saved
+                    if r.error:
+                        res.failure(r.error)
+                        break
+                elif isinstance(
+                    stmt,
+                    (
+                        VariableAssignNode,
+                        MultiVariableAssignNode,
+                        FunctionDefNode,
+                        StructDefNode,
+                    ),
+                ):
+                    before = set(exec_ctx.variables.variables.keys())
+                    saved = self._member_def
+                    self._member_def = (new_scope, exec_ctx)
+                    try:
+                        r = self.visit(stmt, exec_ctx)
+                    finally:
+                        self._member_def = saved
+                    if r.error:
+                        res.failure(r.error)
+                        break
+                    if isinstance(stmt, VariableAssignNode):
+                        kind = (
+                            ContainerScope.CONST
+                            if stmt.is_const
+                            else ContainerScope.DATA
+                        )
+                    elif isinstance(stmt, MultiVariableAssignNode):
+                        kind = (
+                            ContainerScope.CONST
+                            if stmt.is_const
+                            else ContainerScope.DATA
+                        )
+                    elif isinstance(stmt, FunctionDefNode):
+                        kind = ContainerScope.FUNC
+                    else:
+                        kind = ContainerScope.STRUCT
+                    for key in [
+                        k for k in exec_ctx.variables.variables.keys() if k not in before
+                    ]:
+                        if (
+                            key in new_scope.children
+                            or key in new_scope.members.variables
+                        ):
+                            res.failure(
+                                AssignmentError(
+                                    stmt.pos_start,
+                                    stmt.pos_end,
+                                    "ASN001",
+                                    {"name": key},
+                                )
+                            )
+                            break
+                        entry = exec_ctx.variables.variables.pop(key)
+                        entry["kind"] = kind
+                        new_scope.members.variables[key] = entry
+                    if res.error:
+                        break
+                else:
+                    r = self.visit(stmt, exec_ctx)
+                    if r.error:
+                        res.failure(r.error)
+                        break
+                    if r.func_return_value is not None:
+                        res.failure(
+                            RunTimeError(
+                                stmt.pos_start,
+                                stmt.pos_end,
+                                "RUN008",
+                                {},
+                            )
+                        )
+                        break
+            else:
+                return res.success(
+                    Empty().set_context(context).set_pos(node.pos_start, node.pos_end)
+                )
+        finally:
+            self._self_stack.pop()
+
+        # Failed init: never expose a seemingly-initialized container.
+        self._unregister_container_tree(registry, qualified)
+        if parent_scope is not None:
+            parent_scope.children.pop(name, None)
+        return res
+
+    def visit_ContainerAccessNode(self, node, context):
+        res = RunTimeResult()
+        _, _, entry, err = self._resolve_container_path(
+            node.path_toks, self._registry_for(context)
+        )
+        if err:
+            return res.failure(err)
+        return res.success(entry["value"])
+
+    def visit_ContainerAssignNode(self, node, context):
+        res = RunTimeResult()
+        scope, member_name, _, err = self._resolve_container_path(
+            node.path_toks, self._registry_for(context)
+        )
+        if err:
+            return res.failure(err)
+        return self._assign_container_member(
+            scope, member_name, node.value_node, node, context
+        )
+
+    def visit_SelfNode(self, node, context):
+        # Bare `self` is never a value.
+        return RunTimeResult().failure(
+            RunTimeError(node.pos_start, node.pos_end, "RUN150", {})
+        )
+
+    def visit_SelfAccessNode(self, node, context):
+        res = RunTimeResult()
+        scope, err = self._current_self_scope(node)
+        if err:
+            return res.failure(err)
+        member = node.member_tok.value
+        if member in scope.children:
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    "RUN145",
+                    {"name": scope.child_qualified(member)},
+                )
+            )
+        entry = scope.members.variables.get(member)
+        if entry is None:
+            return res.failure(
+                RunTimeError(
+                    node.pos_start,
+                    node.pos_end,
+                    "RUN147",
+                    {"member": member, "container": scope.qualified_name},
+                )
+            )
+        return res.success(entry["value"])
+
+    def visit_SelfAssignNode(self, node, context):
+        res = RunTimeResult()
+        scope, err = self._current_self_scope(node)
+        if err:
+            return res.failure(err)
+        return self._assign_container_member(
+            scope, node.member_tok.value, node.value_node, node, context
+        )
 
     def visit_PropertyAssignNode(self, node, context):
         res = RunTimeResult()

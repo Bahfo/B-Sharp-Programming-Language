@@ -1,0 +1,70 @@
+schema_version: 1
+project: B-Sharp
+purpose: >-
+  Machine-readable summary of compatibility-sensitive language rules and
+  agent change restrictions. This file does not replace the complete language
+  specification or the test suite.
+
+change_policy:
+  default: preserve_existing_behavior
+  explicit_owner_approval_required_for:
+    - syntax_or_grammar_changes
+    - scope_or_name_resolution_changes
+    - type_system_or_conversion_changes
+    - expression_evaluation_order_changes
+    - function_or_call_semantics_changes
+    - runtime_value_representation_changes
+    - reference_or_mutation_semantics_changes
+    - initialization_or_import_semantics_changes
+    - observable_error_behavior_changes
+    - golden_or_conformance_baseline_changes
+    - public_api_changes
+  unapproved_actions_forbidden:
+    - weakening_or_deleting_tests
+    - updating_snapshots_only_to_make_tests_pass
+    - adding_dependencies
+    - mass_formatting
+    - unrelated_refactoring
+    - changing_build_or_ci_configuration
+    - destructive_git_operations
+
+owner_confirmed_compatibility_rules:
+  variable_scope:
+    if_block_declarations:
+      behavior: leak_into_global_state
+      status: owner_confirmed
+      change_requires_approval: true
+    loop_body_declarations:
+      behavior: do_not_leak_into_global_state
+      status: owner_confirmed
+      change_requires_approval: true
+    function_body_declarations:
+      behavior: do_not_leak_into_global_state
+      status: owner_confirmed
+      change_requires_approval: true
+  function_values:
+    function_name_as_expression: evaluates_to_function_value
+    Function_annotation_accepts_function_values: true
+    function_values_can_be_passed_as_arguments: true
+    function_values_can_be_called_indirectly: true
+    status: owner_confirmed
+    change_requires_approval: true
+
+verification:
+  require_focused_tests: true
+  require_adjacent_regression_tests: true
+  require_full_applicable_suite_when_feasible: true
+  require_final_diff_review: true
+  report_unrun_tests: true
+  claim_only_observed_results: true
+
+conflict_policy:
+  if_specification_and_implementation_disagree: stop_and_report
+  if_tests_and_approved_specification_disagree: stop_and_report
+  if_semantics_are_unspecified: do_not_infer; request_owner_decision
+
+feature_status_policy:
+  rule: >-
+    A proposal, chat discussion, example, or unmerged specification does not
+    establish that a feature is implemented. Verify current source, tests, and
+    accepted project documentation before describing support as existing.

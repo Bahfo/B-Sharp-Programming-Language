@@ -93,6 +93,11 @@ class Parser:
         self.token_index = -1
         self.current_token = None
         self.depth = 0
+        # Tracks `{...}` block nesting (every body parsed via block()).
+        # Container declarations are only legal when this is 0 (top level
+        # or directly inside a container body, which is parsed without
+        # going through block()).
+        self._block_depth = 0
         self.forward()
 
     def forward(self):
@@ -237,6 +242,11 @@ class Parser:
                 return res
 
             return res.success(list_expression)
+
+        elif tok.type == TOKEN_KEYWORD and tok.value == "self":
+            res.register_forward()
+            self.forward()
+            return res.success(SelfNode(tok))
 
         elif tok.type == TOKEN_KEYWORD and tok.value in ("true", "false"):
             res.register_forward()
@@ -1265,6 +1275,10 @@ class Parser:
                 return self.try_statement()
             elif self.current_token.value == "struct":
                 return self.struct_def()
+            elif self.current_token.value == "container":
+                return self.container_def()
+            elif self.current_token.value == "self":
+                return self.self_statement()
 
         # Prefix ++i / --i
         if self.current_token.type in (TOKEN_INC, TOKEN_DEC):
@@ -1304,6 +1318,22 @@ class Parser:
                     return res
                 return res.success(
                     PropertyAssignNode(lhs.node, lhs.property_name_token, value_node)
+                )
+
+            if isinstance(lhs, ContainerAccessNode):
+                res.register(self.forward())  # consume '='
+                value_node = res.register(self.expression())
+                if res.error:
+                    return res
+                return res.success(ContainerAssignNode(lhs.path_toks, value_node))
+
+            if isinstance(lhs, SelfAccessNode):
+                res.register(self.forward())  # consume '='
+                value_node = res.register(self.expression())
+                if res.error:
+                    return res
+                return res.success(
+                    SelfAssignNode(lhs.self_tok, lhs.member_tok, value_node)
                 )
 
         self.token_index = saved_index
@@ -1412,7 +1442,11 @@ class Parser:
         res.register_forward()
         self.forward()
 
-        statements_node = res.register(self.statements())
+        self._block_depth += 1
+        try:
+            statements_node = res.register(self.statements())
+        finally:
+            self._block_depth -= 1
         if res.error:
             return res
 
@@ -1701,12 +1735,57 @@ class Parser:
                 res.register_forward()
                 self.forward()
 
-                if self.current_token.type == TOKEN_LPAREN:
+                if isinstance(node, SelfNode):
+                    access = SelfAccessNode(node.tok, property_tok)
+                    if self.current_token.type == TOKEN_LPAREN:
+                        node = res.register(self.finish_call(access))
+                        if res.error:
+                            return res
+                    else:
+                        node = access
+                elif self.current_token.type == TOKEN_LPAREN:
                     node = res.register(self.finish_method_call(node, property_tok))
                     if res.error:
                         return res
                 else:
                     node = PropertyAccessNode(node, property_tok)
+
+            elif self.current_token.type == TOKEN_DCOLON:
+                if isinstance(node, SelfNode):
+                    return res.failure(
+                        B_SharpSyntaxError(
+                            node.pos_start,
+                            node.pos_end,
+                            "SYN091",
+                        )
+                    )
+                if isinstance(node, VariableAccessNode):
+                    path_toks = [node.name]
+                elif isinstance(node, ContainerAccessNode):
+                    path_toks = list(node.path_toks)
+                else:
+                    return res.failure(
+                        B_SharpSyntaxError(
+                            node.pos_start,
+                            node.pos_end,
+                            "SYN090",
+                        )
+                    )
+                while self.current_token.type == TOKEN_DCOLON:
+                    res.register_forward()
+                    self.forward()
+                    if self.current_token.type != TOKEN_IDENTIFIER:
+                        return res.failure(
+                            B_SharpSyntaxError(
+                                self.current_token.pos_start,
+                                self.current_token.pos_end,
+                                "SYN089",
+                            )
+                        )
+                    path_toks.append(self.current_token)
+                    res.register_forward()
+                    self.forward()
+                node = ContainerAccessNode(path_toks)
 
             else:
                 break
@@ -2341,3 +2420,149 @@ class Parser:
         self.forward()
 
         return res.success(StructDefNode(name_tok, member_nodes, pos_end))
+
+    def self_statement(self):
+        """Parses a statement starting with `self`.
+
+        Handles `self.member`, `self.member = expr`, and
+        `self.member(args)`. Bare `self` parses to SelfNode (rejected at
+        runtime as a non-value); `self::...` and `self = ...` are syntax
+        errors here for a precise diagnostic.
+        """
+        res = ParserResults()
+        self_tok = self.current_token
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type == TOKEN_DCOLON:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self_tok.pos_start,
+                    self.current_token.pos_end,
+                    "SYN091",
+                )
+            )
+
+        if self.current_token.type == TOKEN_EQUAL:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self_tok.pos_start,
+                    self_tok.pos_end,
+                    "SYN092",
+                )
+            )
+
+        if self.current_token.type != TOKEN_DOT:
+            return res.success(SelfNode(self_tok))
+
+        res.register_forward()
+        self.forward()
+        if self.current_token.type != TOKEN_IDENTIFIER:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN052",
+                )
+            )
+        member_tok = self.current_token
+        res.register_forward()
+        self.forward()
+
+        access = SelfAccessNode(self_tok, member_tok)
+        if self.current_token.type == TOKEN_LPAREN:
+            node = res.register(self.finish_call(access))
+            if res.error:
+                return res
+            return res.success(node)
+
+        if self.current_token.type == TOKEN_EQUAL:
+            res.register(self.forward())  # consume '='
+            value_node = res.register(self.expression())
+            if res.error:
+                return res
+            return res.success(SelfAssignNode(self_tok, member_tok, value_node))
+
+        return res.success(access)
+
+    def container_def(self):
+        res = ParserResults()
+
+        if not self.current_token.matches(TOKEN_KEYWORD, "container"):
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN070",
+                )
+            )
+
+        # Placement: only top level or directly inside another container
+        # body. Every other body (functions, control flow) is parsed via
+        # block(), which raises _block_depth.
+        if self._block_depth > 0:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN088",
+                )
+            )
+
+        pos_start = self.current_token.pos_start
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type != TOKEN_IDENTIFIER:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN086",
+                )
+            )
+
+        name_tok = self.current_token
+        res.register_forward()
+        self.forward()
+
+        if self.current_token.type != TOKEN_LCURLY:
+            return res.failure(
+                B_SharpSyntaxError(
+                    self.current_token.pos_start,
+                    self.current_token.pos_end,
+                    "SYN087",
+                )
+            )
+
+        res.register_forward()
+        self.forward()
+
+        self._skip_newlines(res)
+
+        # Free-form initialization region: any statements in source order.
+        # Parsed directly (not via block()) so nested containers stay
+        # legal as direct children.
+        member_nodes = []
+        while self.current_token.type != TOKEN_RCURLY:
+            if self.current_token.type == TOKEN_EOF:
+                return res.failure(
+                    B_SharpSyntaxError(
+                        self.current_token.pos_start,
+                        self.current_token.pos_end,
+                        "SYN036",
+                    )
+                )
+
+            stmt = res.register(self.statement())
+            if res.error:
+                return res
+            member_nodes.append(stmt)
+
+            self._skip_newlines(res)
+
+        pos_end = self.current_token.pos_end
+        res.register_forward()
+        self.forward()
+
+        return res.success(ContainerDefNode(name_tok, member_nodes, pos_start, pos_end))

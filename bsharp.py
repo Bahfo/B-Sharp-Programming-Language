@@ -29,7 +29,7 @@ def run_source(file_name, source_text, context=None, measure_time=False):
         source_text = source_text[1:]
 
     if context is None:
-        context = Context("<main>")
+        context = Context("<main>", is_program_root=True)
         register_builtins(context)
 
     frontend_res = parse_source(file_name, source_text)
@@ -91,7 +91,7 @@ def run_repl():
     print("B_Sharp Language REPL v1.0 [Dynamic Interpreter / Compiler Driver]")
     print("Type 'exit()','quit()' or press Ctrl+C to exit.\n")
 
-    global_context = Context("<main>")
+    global_context = Context("<main>", is_program_root=True)
     register_builtins(global_context)
 
     while True:
@@ -118,7 +118,6 @@ def print_usage():
     print("Usage:")
     print("  bsharp                             Start REPL")
     print("  bsharp run <file.bsharp>           Interpret file")
-    print("  bsharp build <file.bsharp> [opts]  Compile file to native executable")
 
 
 def main():
@@ -126,45 +125,6 @@ def main():
 
     if not args:
         run_repl()
-    elif args[0] == "build" or args[0] == "compile":
-        if len(args) < 2:
-            print("Error: No input source file provided for compilation.")
-            print_usage()
-            sys.exit(1)
-
-        from B_Sharp.Backend.driver import build_file, BuildError
-
-        source_file = args[1]
-        rest = args[2:]
-        output = None
-        keep_d = False
-        compiler = None
-        i = 0
-        while i < len(rest):
-            if rest[i] in ("-o", "--output") and i + 1 < len(rest):
-                output = rest[i + 1]
-                i += 2
-            elif rest[i] == "--keep-d":
-                keep_d = True
-                i += 1
-            elif rest[i] == "--compiler" and i + 1 < len(rest):
-                compiler = rest[i + 1]
-                i += 2
-            else:
-                print(f"Error: Unknown build option '{rest[i]}'")
-                sys.exit(1)
-
-        try:
-            exe_path, d_path = build_file(
-                source_file, output_path=output, keep_d=keep_d, compiler=compiler
-            )
-        except KeyboardInterrupt:
-            print("\nBuild interrupted by user.", file=sys.stderr)
-            sys.exit(130)
-        except BuildError as e:
-            print(f"Build failed: {e}")
-            sys.exit(1)
-        print(f"Built {exe_path} (D: {d_path})")
     else:
         measure_time = False
         if "--measure" in args:
