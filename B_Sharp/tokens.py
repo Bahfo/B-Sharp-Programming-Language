@@ -28,6 +28,7 @@ TOKEN_IDENTIFIER = "IDENTIFIER"
 # Identifiers
 TOKEN_EQUAL = "EQ"
 TOKEN_COLON = "COLON"
+TOKEN_DCOLON = "DCOLON"
 TOKEN_COMMA = "COMMA"
 # Comparisons
 TOKEN_EE = "EQUAL_EQUAL"
@@ -128,6 +129,7 @@ KEYWORDS = [
     "function",
     "Function",
     "container",
+    "self",
 ]
 
 # Predefined Language Special Keywords

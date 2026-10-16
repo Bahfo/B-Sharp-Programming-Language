@@ -474,6 +474,42 @@ ERROR_CATALOG = {
         "message": "Invalid cast target '{type_name}'",
         "hint": "cast() targets must be scalar: Short, Single, Integer, Long, Float, Double, Char, String or Bool",
     },
+    # ==================== CONTAINER ERRORS ====================
+    "SYN086": {
+        "name": "Syntax Error",
+        "message": "Expected container name identifier",
+        "hint": "Provide a name for the container: container Name { ... }",
+    },
+    "SYN087": {
+        "name": "Syntax Error",
+        "message": "Expected '{{' after container name",
+        "hint": "Start the container body with '{{'",
+    },
+    "SYN088": {
+        "name": "Syntax Error",
+        "message": "Container declarations are only allowed at the top level or directly inside another container",
+        "hint": "Move the container declaration out of the function or block",
+    },
+    "SYN089": {
+        "name": "Syntax Error",
+        "message": "Expected member name after '::'",
+        "hint": "Use Container::member with an identifier after '::'",
+    },
+    "SYN090": {
+        "name": "Syntax Error",
+        "message": "'::' can only follow a container name",
+        "hint": "Use Container::member or Parent::Child::member with identifiers",
+    },
+    "SYN091": {
+        "name": "Syntax Error",
+        "message": "'self::member' is invalid",
+        "hint": "Use 'self.member' with a dot inside container init or methods",
+    },
+    "SYN092": {
+        "name": "Syntax Error",
+        "message": "Cannot assign to 'self' (it is read-only)",
+        "hint": "Assign to a member instead: 'self.member = value'",
+    },
     # ==================== RUNTIME ERRORS ====================
     # Visitor/Operator Errors
     "RUN001": {
@@ -848,6 +884,37 @@ ERROR_CATALOG = {
         "message": "struct '{struct_name}' has no field named '{field}'",
         "hint": "Check the field names in the struct definition",
     },
+    # Container Errors
+    "RUN145": {
+        "name": "RunTime Error",
+        "message": "'{name}' is a container, not a value",
+        "hint": "Containers cannot be stored, passed, or used as values; use Container::member instead",
+    },
+    "RUN146": {
+        "name": "RunTime Error",
+        "message": "'{name}' is not a container",
+        "hint": "Only declared containers can appear before '::'",
+    },
+    "RUN147": {
+        "name": "RunTime Error",
+        "message": "'{member}' is not a member of container '{container}'",
+        "hint": "Check the container definition for available members",
+    },
+    "RUN148": {
+        "name": "RunTime Error",
+        "message": "Cannot call container '{name}' (containers cannot be instantiated)",
+        "hint": "Call a method instead: 'Container::method(args)'",
+    },
+    "RUN149": {
+        "name": "RunTime Error",
+        "message": "'self' used outside container initialization or method",
+        "hint": "Use 'self.member' only inside a container body or its methods",
+    },
+    "RUN150": {
+        "name": "RunTime Error",
+        "message": "Cannot use 'self' as an ordinary value",
+        "hint": "Access a member instead: 'self.member'",
+    },
     # ==================== ASSIGNMENT ERRORS ====================
     "ASN001": {
         "name": "Uncaught Assignment Error",
@@ -904,6 +971,11 @@ ERROR_CATALOG = {
         "name": "Uncaught Modification Error",
         "message": "Cannot assign to field '{property}' of temporary struct instance",
         "hint": "Assign via variable: 'var a = Type(); a.field = value'",
+    },
+    "MOD005": {
+        "name": "Uncaught Modification Error",
+        "message": "Cannot rebind member '{member}' of container '{container}'",
+        "hint": "Functions, structs, and nested containers are immutable bindings; assign only to 'var' members",
     },
     # ==================== COMPARISON ERRORS ====================
     "CMP001": {

@@ -1800,12 +1800,19 @@ class Context:
         parent_entry_pos=None,
         in_function=False,
         in_loop=False,
+        container_scope=None,
+        is_program_root=False,
     ):
         self.display_name = display_name
         self.parent = parent
         self.parent_entry_pos = parent_entry_pos
         self.in_function = in_function
         self.in_loop = in_loop
+        # Non-None only for the init/member Context owned by a container.
+        self.container_scope = container_scope
+        # True for <main> / module-root / REPL contexts: the only places
+        # (besides container bodies) where `container` may be declared.
+        self.is_program_root = is_program_root
         self.variables = EnvironmentVariable(parent.variables if parent else None)
 
 
@@ -2080,13 +2087,52 @@ class EnvironmentVariable:
         )
 
 
+class ContainerScope:
+    """Named singleton scope for a B# `container`.
+
+    This is deliberately NOT a runtime Value: it never participates in
+    the ordinary value system (no assignment, calls, arithmetic, casts,
+    argument passing, or returns). Members live in `members`, an
+    EnvironmentVariable chained to the definition-site scope so method
+    bodies and init code keep lexical access to enclosing scopes while
+    bare identifiers never implicitly see container members (methods
+    close over the definition-site scope instead — see Function).
+    """
+
+    # Member kinds stored alongside each entry in `members.variables`.
+    DATA = "var"  # mutable `var` member
+    CONST = "const"  # immutable `const` member
+    FUNC = "func"  # owned method (Function with container_owner set)
+    STRUCT = "struct"  # struct definition housed in the container
+    NESTED = "nested"  # nested container (child scope, not a value)
+
+    def __init__(self, name, qualified_name, parent_scope, definition_env, pos_start=None, pos_end=None):
+        self.name = name
+        self.qualified_name = qualified_name
+        self.parent_scope = parent_scope  # ContainerScope or None
+        self.children = {}  # nested container name -> ContainerScope
+        self.members = EnvironmentVariable(definition_env)
+        self.init_context = None  # Context executing init (set at definition)
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+    def child_qualified(self, name):
+        if self.qualified_name:
+            return f"{self.qualified_name}::{name}"
+        return name
+
+    def __repr__(self):
+        return f"<container {self.qualified_name}>"
+
+
 class Function(Value):
     """
     Runtime representation of a defined function in B-Sharp.
     """
 
     def __init__(
-        self, name, body_node, arg_nodes, return_type_tok, parent_context=None
+        self, name, body_node, arg_nodes, return_type_tok, parent_context=None,
+        container_owner=None,
     ):
         self.name = name
         self.body_node = body_node
@@ -2095,6 +2141,9 @@ class Function(Value):
         self.return_type = (
             resolve_type(return_type_tok.value) if return_type_tok else None
         )
+        # ContainerScope owning this method, or None for ordinary functions.
+        # While such a method executes, `self` binds to this scope.
+        self.container_owner = container_owner
         self.set_context(parent_context)
         self.set_pos()
 

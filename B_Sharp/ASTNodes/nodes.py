@@ -466,14 +466,90 @@ class PropertyAssignNode:
         return f"{self.target}.{self.property_name} = {self.value}"
 
 
-class ContainerNode:
-    def __init__(self, pos_start, pos_end, body_node):
+class ContainerDefNode:
+    """`container Name { <statements> }` declaration.
+
+    `member_nodes` holds the raw body statements in source order (free-form
+    initialization region). `name` is the container-name token.
+    """
+
+    def __init__(self, name, member_nodes, pos_start, pos_end):
+        self.name = name
+        self.member_nodes = member_nodes
         self.pos_start = pos_start
         self.pos_end = pos_end
-        self.body_node = body_node
 
     def __repr__(self):
-        return f"container {self.body_node}"
+        return f"container {self.name.value} {{ {self.member_nodes} }}"
+
+
+class ContainerAccessNode:
+    """Qualified member read: `A::B::member`.
+
+    `path_toks` is a list of 2+ identifier tokens; all but the last name
+    nested containers, the last names the resolved member.
+    """
+
+    def __init__(self, path_toks):
+        self.path_toks = path_toks
+        self.pos_start = path_toks[0].pos_start
+        self.pos_end = path_toks[-1].pos_end
+
+    def __repr__(self):
+        return "::".join(t.value for t in self.path_toks)
+
+
+class ContainerAssignNode:
+    """Qualified member write: `A::B::member = value`."""
+
+    def __init__(self, path_toks, value_node):
+        self.path_toks = path_toks
+        self.value_node = value_node
+        self.pos_start = path_toks[0].pos_start
+        self.pos_end = value_node.pos_end
+
+    def __repr__(self):
+        target = "::".join(t.value for t in self.path_toks)
+        return f"{target} = {self.value_node}"
+
+
+class SelfNode:
+    """Bare `self` — never a value; only valid as `self.member` prefix."""
+
+    def __init__(self, tok):
+        self.tok = tok
+        self.pos_start = tok.pos_start
+        self.pos_end = tok.pos_end
+
+    def __repr__(self):
+        return "self"
+
+
+class SelfAccessNode:
+    """`self.member` read inside container init or an owned method."""
+
+    def __init__(self, self_tok, member_tok):
+        self.self_tok = self_tok
+        self.member_tok = member_tok
+        self.pos_start = self_tok.pos_start
+        self.pos_end = member_tok.pos_end
+
+    def __repr__(self):
+        return f"self.{self.member_tok.value}"
+
+
+class SelfAssignNode:
+    """`self.member = value` write."""
+
+    def __init__(self, self_tok, member_tok, value_node):
+        self.self_tok = self_tok
+        self.member_tok = member_tok
+        self.value_node = value_node
+        self.pos_start = self_tok.pos_start
+        self.pos_end = value_node.pos_end
+
+    def __repr__(self):
+        return f"self.{self.member_tok.value} = {self.value_node}"
 
 
 def is_signed_numeric_literal(node):
