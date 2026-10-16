@@ -8,7 +8,7 @@ Language (`.bsharp` and `.bshead` files).
 - Syntax highlighting for B# source files
 - Single-line (`//`) and block (`/* ... */`) comments
 - Double-quoted strings with escape sequences, single-quoted `Char` literals
-- Keywords: control flow (`if`/`elif`/`else`/`then`/`do`/`for`/`while`/`try`/`catch`/`using`/`return`/`break`/`continue`/`pass`), function declarations (`fn`/`function`), storage (`var`/`const`/`struct`), logic (`and`/`or`/`not`)
+- Keywords: control flow (`if`/`elif`/`else`/`then`/`do`/`for`/`while`/`try`/`catch`/`using`/`return`/`break`/`continue`/`pass`), function declarations (`fn`/`function`), storage (`var`/`const`/`struct`/`container`), logic (`and`/`or`/`not`), identity test (`is`), container-self (`self`)
 - Types: `Bool`, `Short`, `Single`, `Integer`, `Long`, `Float`, `Double`, `Char`, `String`, `Empty`, `List`, `Tuple`, `Function`, `Inf`, `NaN`
 - Array annotations: `Short[]`, `Single[]`, `Integer[]`, `Long[]`, `Float[]`, `Double[]`, `Char[]`, `String[]`, `Bool[]`, `Empty[]` (repeatable for nesting, e.g. `Long[][]`), plus `Tuple(...)` annotations
 - Caller macros: `!pragma enforce`, `!pragma precision <0..12>`, `!pragma precision default` (stray `!name` / bare `!` flagged illegal; `!=` stays a comparison)

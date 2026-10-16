@@ -119,12 +119,20 @@
           "match": "\\b(and|or|not)\\b"
         },
         {
+          "name": "keyword.operator.type.bsharp",
+          "match": "\\b(is)\\b"
+        },
+        {
           "name": "keyword.type.function.bsharp",
           "match": "\\b(fn|function)\\b"
         },
         {
           "name": "storage.type.variable.bsharp",
-          "match": "\\b(var|const|struct)\\b"
+          "match": "\\b(var|const|struct|container)\\b"
+        },
+        {
+          "name": "variable.language.bsharp",
+          "match": "\\b(self)\\b"
         }
       ]
     },

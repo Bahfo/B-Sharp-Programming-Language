@@ -84,6 +84,16 @@
     "body": ["struct ${1:Name} {", "\t${0}", "}"],
     "description": "B# struct definition"
   },
+  "B# container": {
+    "prefix": "container",
+    "body": ["container ${1:Name} {", "\t${0}", "}"],
+    "description": "B# container definition (top level or nested in container)"
+  },
+  "B# self": {
+    "prefix": "self",
+    "body": "self.${1:member}",
+    "description": "B# self member access (inside container init or method)"
+  },
   "B# fn": {
     "prefix": ["fn", "function"],
     "body": ["fn ${1:name}(${2:params}) -> ${3:Long} {", "\treturn ${0}", "}"],
@@ -103,6 +113,11 @@
     "prefix": "not",
     "body": "not ${1:condition}",
     "description": "B# logical not"
+  },
+  "B# is": {
+    "prefix": "is",
+    "body": "${1:value} is ${2:value}",
+    "description": "B# identity/equality test: value is value"
   },
   "B# true": {
     "prefix": "true",
